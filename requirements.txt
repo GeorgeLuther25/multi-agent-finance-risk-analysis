@@ -1,0 +1,9 @@
+langchain
+langgraph
+langchain_community
+pandas
+numpy
+yfinance
+python-dateutil
+ollama
+pydantic
