@@ -7,3 +7,5 @@ yfinance
 python-dateutil
 ollama
 pydantic
+streamlit
+openai
