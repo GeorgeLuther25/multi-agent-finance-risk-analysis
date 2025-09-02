@@ -9,3 +9,8 @@ ollama
 pydantic
 streamlit
 openai
+plotly
+requests
+beautifulsoup4
+matplotlib
+seaborn
