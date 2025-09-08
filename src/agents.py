@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from .config import get_llm
 from .tools import get_price_history, get_recent_news
-from .schemas import MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport
+from .schemas import MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport, SentimentSummary
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -22,6 +22,27 @@ os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 
 DATA_SYSTEM = "You are the Data Agent. Fetch prices (CSV) and recent news (list). Return raw data only."
 RISK_SYSTEM = "You are the Risk Agent. Compute annualized vol, max drawdown, 1D 95% VaR (Gaussian), and a naive Sharpe-like. Add risk flags."
+SENTIMENT_SYSTEM = """You are the Sentiment Agent. You analyze financial news using reflection-enhanced prompting.
+
+Your task is to:
+1. SUMMARIZE: First, provide a concise summary of each news item
+2. CRITIQUE: Evaluate the quality and relevance of your summary
+3. REFINE: Improve your analysis based on the critique
+4. CONCLUDE: Provide an overall sentiment analysis and investment recommendation
+
+For each news item, consider:
+- Market impact and relevance
+- Sentiment indicators (positive, negative, neutral language)
+- Financial implications
+- Credibility of the source
+
+Your final output should include:
+- Overall sentiment (bullish/bearish/neutral)
+- Confidence score (0.0-1.0)
+- Investment recommendation with reasoning
+- Key insights from the news analysis
+
+Use reflection to ensure your analysis is thorough and well-reasoned."""
 WRITER_SYSTEM = "You are the Writer Agent. Produce a professional Markdown risk report based on inputs."
 
 def _compute_risk(price_csv: str):
@@ -62,6 +83,7 @@ class State(BaseModel):
     horizon_days: int = 30
     market: Optional[MarketData] = None
     news: Optional[NewsBundle] = None
+    sentiment: Optional[SentimentSummary] = None
     metrics: Optional[RiskMetrics] = None
     report: Optional[RiskReport] = None
 
@@ -73,9 +95,10 @@ def data_agent(state: State, config: RunnableConfig):
     items = []
     try:
         for r in ast.literal_eval(news_raw):
-            items.append(NewsItem(date=str(r["date"]), headline=str(r["headline"]), sentiment=str(r["sentiment"])))
-    except Exception:
-        pass
+            # print("News is:", r["content"])
+            items.append(NewsItem(date=str(r["date"]), headline=str(r["headline"]), sentiment=str(r["sentiment"]), content=str(r["content"])))
+    except Exception as e:
+        print(f"Exception occured:{e}")
     
     # Create new state with updated data
     new_state = State(
@@ -85,6 +108,143 @@ def data_agent(state: State, config: RunnableConfig):
         horizon_days=state.horizon_days,
         market=MarketData(ticker=state.ticker, period=state.period, interval=state.interval, price_csv=price_csv),
         news=NewsBundle(ticker=state.ticker, window_days=min(14, state.horizon_days), items=items),
+        sentiment=state.sentiment,
+        metrics=state.metrics,
+        report=state.report
+    )
+    return new_state
+
+
+def sentiment_agent(state: State, config: RunnableConfig):
+    """
+    Sentiment agent that analyzes news using reflection-enhanced prompting.
+    Implements a multi-step process: summarize, critique, refine, conclude.
+    """
+    llm = get_llm()
+    
+    if not state.news or not state.news.items:
+        # No news data available
+        sentiment_summary = SentimentSummary(
+            ticker=state.ticker,
+            news_items_analyzed=0,
+            overall_sentiment="neutral",
+            confidence_score=0.0,
+            summary="No news data available for analysis.",
+            investment_recommendation="Cannot provide recommendation due to lack of news data.",
+            key_insights=["No news items found for analysis"],
+            methodology="LLM-based reflection-enhanced summarization"
+        )
+        
+        new_state = State(
+            ticker=state.ticker,
+            period=state.period,
+            interval=state.interval,
+            horizon_days=state.horizon_days,
+            market=state.market,
+            news=state.news,
+            sentiment=sentiment_summary,
+            metrics=state.metrics,
+            report=state.report
+        )
+        return new_state
+    
+    # Prepare news data for analysis
+    news_text = []
+    for item in state.news.items:
+        news_text.append(f"Date: {item.date}\nHeadline: {item.headline}\nSentiment: {item.sentiment}")
+    
+    news_content = "\n\n".join(news_text)
+    
+    # Step 1: Initial Analysis with Reflection-Enhanced Prompting
+    analysis_prompt = f"""
+    As a sentiment equity analyst your primary responsibility is to analyze the financial news, analyst ratings and disclosures related to the underlying security, and analyze its implication and sentiment for investors or stakeholders.
+    
+    Analyze the following news items for {state.ticker} using reflection-enhanced prompting:
+
+    NEWS DATA:
+    {news_content}
+
+    PROCESS:
+    1. SUMMARIZE: First, provide a concise summary of each news item and its potential market impact.
+    2. CRITIQUE: Evaluate your summary - is it comprehensive? Are you missing key insights? What biases might be present?
+    3. REFINE: Based on your critique, improve and refine your analysis.
+    4. CONCLUDE: Provide your final assessment.
+
+    Your response should also include:
+    - Overall sentiment analysis (bullish/bearish/neutral)
+    - Confidence level (0.0 to 1.0)
+    - Key insights and reasoning
+    - Investment recommendation with clear rationale
+
+    Provide a concise summary along with an informed recommendation on whether to invest in this stock.
+    """
+    
+    response = llm.invoke([
+        SystemMessage(content=SENTIMENT_SYSTEM),
+        HumanMessage(content=analysis_prompt)
+    ])
+    
+    # Parse the LLM response to extract structured information
+    response_text = response.content if hasattr(response, 'content') else str(response)
+    
+    # Simple sentiment extraction (could be enhanced with more sophisticated parsing)
+    sentiment_mapping = {
+        "bullish": "bullish",
+        "bearish": "bearish", 
+        "neutral": "neutral",
+        "positive": "bullish",
+        "negative": "bearish"
+    }
+    
+    overall_sentiment = "neutral"
+    confidence_score = 0.5
+    
+    # Extract sentiment from response
+    response_lower = response_text.lower()
+    for keyword, sentiment in sentiment_mapping.items():
+        if keyword in response_lower:
+            overall_sentiment = sentiment
+            break
+    
+    # Extract confidence (simple heuristic)
+    if "high confidence" in response_lower or "very confident" in response_lower:
+        confidence_score = 0.8
+    elif "low confidence" in response_lower or "uncertain" in response_lower:
+        confidence_score = 0.3
+    elif "moderate" in response_lower or "medium" in response_lower:
+        confidence_score = 0.6
+    
+    # Extract key insights (simple extraction based on common patterns)
+    key_insights = []
+    lines = response_text.split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith('-') or line.startswith('•') or 'insight' in line.lower():
+            key_insights.append(line.strip('- •').strip())
+    
+    if not key_insights:
+        key_insights = ["Analysis completed using reflection-enhanced prompting methodology"]
+    
+    sentiment_summary = SentimentSummary(
+        ticker=state.ticker,
+        news_items_analyzed=len(state.news.items),
+        overall_sentiment=overall_sentiment,
+        confidence_score=confidence_score,
+        # summary=response_text[:500] + "..." if len(response_text) > 500 else response_text,
+        summary=response_text,
+        investment_recommendation=f"Based on sentiment analysis: {overall_sentiment} outlook with {confidence_score:.1%} confidence",
+        key_insights=key_insights[:5],  # Limit to top 5 insights
+        methodology="LLM-based reflection-enhanced summarization"
+    )
+    
+    new_state = State(
+        ticker=state.ticker,
+        period=state.period,
+        interval=state.interval,
+        horizon_days=state.horizon_days,
+        market=state.market,
+        news=state.news,
+        sentiment=sentiment_summary,
         metrics=state.metrics,
         report=state.report
     )
@@ -121,6 +281,7 @@ def risk_agent(state: State, config: RunnableConfig):
         horizon_days=state.horizon_days,
         market=state.market,
         news=state.news,
+        sentiment=state.sentiment,
         metrics=metrics,
         report=state.report
     )
@@ -128,6 +289,29 @@ def risk_agent(state: State, config: RunnableConfig):
 
 def writer_agent(state: State, config: RunnableConfig):
     llm = get_llm()
+    
+    # Build sentiment section
+    sentiment_section = ""
+    if state.sentiment:
+        sentiment_section = f"""
+## Sentiment Analysis
+- **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}
+- **Confidence Score**: {state.sentiment.confidence_score:.1%}
+- **News Items Analyzed**: {state.sentiment.news_items_analyzed}
+- **Investment Recommendation**: {state.sentiment.investment_recommendation}
+
+### Key Insights
+{chr(10).join(f"- {insight}" for insight in state.sentiment.key_insights)}
+
+### Summary
+{state.sentiment.summary}
+"""
+    else:
+        sentiment_section = """
+## Sentiment Analysis
+No sentiment analysis available - insufficient news data.
+"""
+
     md = f"""# Risk Report — {state.ticker}
 
 **As of:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
@@ -143,7 +327,7 @@ Automated risk snapshot for {state.ticker} over the past {state.period}. Horizon
 
 ## Risk Flags
 {', '.join(state.metrics.risk_flags) if state.metrics.risk_flags else 'None'}
-
+{sentiment_section}
 ## Recent News (stub)
 {chr(10).join(f"- {n.date}: {n.headline} [{n.sentiment}]" for n in (state.news.items if state.news else []))}
 
@@ -152,13 +336,14 @@ Automated risk snapshot for {state.ticker} over the past {state.period}. Horizon
 - Annualized vol = std(returns)*sqrt(252)
 - Max drawdown = min(Price/Peak - 1)
 - VaR(95%) = -(μ + 1.645σ), Gaussian
+- Sentiment analysis uses LLM-based reflection-enhanced summarization
 """
     _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
     report = RiskReport(
         ticker=state.ticker,
         as_of=datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC'),
-        summary=f"Risk snapshot for {state.ticker}.",
-        key_findings=["Automated metrics computed from historical data."],
+        summary=f"Risk snapshot for {state.ticker} with sentiment analysis.",
+        key_findings=["Automated metrics computed from historical data.", "Sentiment analysis from recent news."],
         metrics_table={
             "annual_vol": state.metrics.annual_vol,
             "max_drawdown": state.metrics.max_drawdown,
@@ -166,7 +351,7 @@ Automated risk snapshot for {state.ticker} over the past {state.period}. Horizon
             "sharpe_like": state.metrics.sharpe_like,
         },
         risk_flags=state.metrics.risk_flags,
-        methodology="Gaussian VaR; log returns; daily OHLC from yfinance.",
+        methodology="Gaussian VaR; log returns; daily OHLC from yfinance; LLM sentiment analysis.",
         markdown_report=md,
     )
     
@@ -178,6 +363,7 @@ Automated risk snapshot for {state.ticker} over the past {state.period}. Horizon
         horizon_days=state.horizon_days,
         market=state.market,
         news=state.news,
+        sentiment=state.sentiment,
         metrics=state.metrics,
         report=report
     )
