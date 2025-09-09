@@ -31,10 +31,22 @@ def get_price_history(ticker: str, period: str = "1y", interval: str = "1d") -> 
     df = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
     if df.empty:
         return f"ERROR: No data for {ticker}."
+    
+    # Reset index to make Date a column
     df = df.reset_index()
-    df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d")
-    # Ensure clean column names without ticker prefixes
-    df.columns = [col.replace(f"{ticker},", "").strip() if isinstance(col, str) else col for col in df.columns]
+    
+    # Clean up column names - handle MultiIndex columns from yfinance
+    if isinstance(df.columns, pd.MultiIndex):
+        # Flatten MultiIndex columns and remove ticker prefixes
+        df.columns = [col[0] if col[1] == '' or col[1] == ticker else col[0] for col in df.columns]
+    else:
+        # Handle regular columns with ticker prefixes
+        df.columns = [col.replace(f"{ticker},", "").strip() if isinstance(col, str) else col for col in df.columns]
+    
+    # Ensure Date column is properly formatted
+    if 'Date' in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d")
+    
     return df.to_csv(index=False)
 
 @tool("get_recent_news")

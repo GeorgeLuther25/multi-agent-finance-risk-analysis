@@ -6,20 +6,23 @@ from langchain_core.runnables import RunnableConfig
 # os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 # os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 
-from .agents import State, data_agent, risk_agent, sentiment_agent, writer_agent
+from .agents import State, data_agent, risk_agent, sentiment_agent, valuation_agent, writer_agent
 # from .agents import State, data_agent, risk_agent, writer_agent
 
 def build_graph():
     g = StateGraph(State)
     g.add_node("data", data_agent)
     g.add_node("sentiment", sentiment_agent)
+    g.add_node("valuation", valuation_agent)
     g.add_node("risk", risk_agent)
     g.add_node("writer", writer_agent)
 
     g.set_entry_point("data")
     g.add_edge("data", "sentiment")
-    g.add_edge("sentiment", "risk")
+    g.add_edge("sentiment", "valuation")
+    g.add_edge("valuation", "risk")
     # g.add_edge("data", "risk")
+    # g.add_edge("sentiment", "risk")
     g.add_edge("risk", "writer")
     # g.add_edge("data", END)
     g.add_edge("writer", END)

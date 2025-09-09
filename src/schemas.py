@@ -44,6 +44,22 @@ class SentimentSummary(BaseModel):
     methodology: str = "LLM-based reflection-enhanced summarization"
 
 
+class ValuationMetrics(BaseModel):
+    ticker: str
+    analysis_period: str
+    trading_days: int
+    cumulative_return: float
+    annualized_return: float
+    daily_volatility: float
+    annualized_volatility: float
+    price_trend: Literal["upward", "downward", "sideways"]
+    volatility_regime: Literal["low", "medium", "high"]
+    valuation_insights: List[str] = Field(default_factory=list)
+    trend_analysis: str
+    risk_assessment: str
+    methodology: str = "Computational analysis with 252 trading days assumption"
+
+
 class RiskReport(BaseModel):
     ticker: str
     as_of: str
