@@ -71,7 +71,7 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
         print("   Set it with: export POLYGON_API_KEY='your-key-here'")
         # Fallback to synthetic news
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return str(_generate_enhanced_synthetic_news(ticker, cutoff_date))
+        return str(_generate_synthetic_news(ticker, cutoff_date))
     
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days)
@@ -79,7 +79,7 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
         
         if not news_items:
             print(f"⚠️  No recent news found for {ticker} from Polygon.io. Using fallback.")
-            news_items = _generate_enhanced_synthetic_news(ticker, cutoff_date)
+            news_items = _generate_synthetic_news(ticker, cutoff_date)
         
         # Sort by date (most recent first) and limit results
         news_items: List[Dict[str, Any]] = sorted(news_items, key=lambda x: x['date'], reverse=True)[:8]
@@ -90,153 +90,7 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
     except Exception as e:
         print(f"❌ Error fetching news for {ticker}: {e}")
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return str(_generate_enhanced_synthetic_news(ticker, cutoff_date))
-
-
-# def _get_alpha_vantage_news(ticker: str, api_key: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
-#     """Fetch news from Alpha Vantage News API"""
-#     try:
-#         url = f"https://www.alphavantage.co/query"
-#         params = {
-#             'function': 'NEWS_SENTIMENT',
-#             'tickers': ticker,
-#             'apikey': api_key,
-#             'limit': 50
-#         }
-        
-#         response = requests.get(url, params=params, timeout=10)
-#         if response.status_code == 200:
-#             data = response.json()
-#             news_items = []
-            
-#             if 'feed' in data:
-#                 for item in data['feed']:
-#                     try:
-#                         # Parse the timestamp
-#                         time_published = item.get('time_published', '')
-#                         if time_published:
-#                             # Format: 20240901T120000
-#                             news_date = datetime.strptime(time_published[:8], '%Y%m%d')
-#                             if news_date >= cutoff_date:
-#                                 # Extract sentiment
-#                                 sentiment_score = 0.0
-#                                 if 'overall_sentiment_score' in item:
-#                                     sentiment_score = float(item['overall_sentiment_score'])
-                                
-#                                 sentiment = "neutral"
-#                                 if sentiment_score > 0.1:
-#                                     sentiment = "positive"
-#                                 elif sentiment_score < -0.1:
-#                                     sentiment = "negative"
-                                
-#                                 news_items.append({
-#                                     'date': news_date.strftime('%Y-%m-%d'),
-#                                     'headline': item.get('title', '')[:150],
-#                                     'sentiment': sentiment,
-#                                     'source': 'Alpha Vantage'
-#                                 })
-#                     except (ValueError, KeyError) as e:
-#                         continue
-            
-#             return news_items[:5]  # Limit to 5 items
-            
-#     except Exception as e:
-#         print(f"Alpha Vantage news error: {e}")
-#         return []
-    
-#     return []
-
-
-# def _get_newsapi_news(ticker: str, api_key: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
-#     """Fetch news from NewsAPI"""
-#     try:
-#         # Get company name for better search
-#         company_names = {
-#             'AAPL': 'Apple',
-#             'GOOGL': 'Google',
-#             'MSFT': 'Microsoft',
-#             'TSLA': 'Tesla',
-#             'AMZN': 'Amazon',
-#             'META': 'Meta Facebook',
-#             'NVDA': 'NVIDIA'
-#         }
-        
-#         search_term = company_names.get(ticker, ticker)
-        
-#         url = "https://newsapi.org/v2/everything"
-#         params = {
-#             'q': f'"{search_term}" AND (stock OR shares OR earnings OR financial)',
-#             'apiKey': api_key,
-#             'language': 'en',
-#             'sortBy': 'publishedAt',
-#             'pageSize': 20,
-#             'from': cutoff_date.strftime('%Y-%m-%d')
-#         }
-        
-#         response = requests.get(url, params=params, timeout=10)
-#         if response.status_code == 200:
-#             data = response.json()
-#             news_items = []
-            
-#             if 'articles' in data:
-#                 for article in data['articles']:
-#                     try:
-#                         published_at = article.get('publishedAt', '')
-#                         if published_at:
-#                             news_date = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                            
-#                             # Simple sentiment analysis using TextBlob
-#                             headline = article.get('title', '')
-#                             sentiment = _analyze_sentiment(headline)
-                            
-#                             news_items.append({
-#                                 'date': news_date.strftime('%Y-%m-%d'),
-#                                 'headline': headline[:150],
-#                                 'sentiment': sentiment,
-#                                 'source': 'NewsAPI'
-#                             })
-#                     except Exception:
-#                         continue
-            
-#             return news_items[:5]
-            
-#     except Exception as e:
-#         print(f"NewsAPI error: {e}")
-#         return []
-    
-#     return []
-
-
-# def _get_yahoo_finance_news(ticker: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
-#     """Fetch news from Yahoo Finance using yfinance"""
-#     try:
-#         stock = yf.Ticker(ticker)
-#         news = stock.news
-        
-#         news_items = []
-#         for item in news[:10]:  # Limit to first 10 items
-#             try:
-#                 # Convert timestamp to datetime
-#                 if 'providerPublishTime' in item:
-#                     news_date = datetime.fromtimestamp(item['providerPublishTime'])
-#                     if news_date >= cutoff_date:
-#                         headline = item.get('title', '')
-#                         sentiment = _analyze_sentiment(headline)
-                        
-#                         news_items.append({
-#                             'date': news_date.strftime('%Y-%m-%d'),
-#                             'headline': headline[:150],
-#                             'sentiment': sentiment,
-#                             'source': 'Yahoo Finance'
-#                         })
-#             except Exception:
-#                 continue
-        
-#         return news_items
-        
-#     except Exception as e:
-#         print(f"Yahoo Finance news error: {e}")
-#         return []
+        return str(_generate_synthetic_news(ticker, cutoff_date))
 
 
 def _extract_url_content(url: str, max_length: int = 4000) -> str:
@@ -459,38 +313,39 @@ def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datet
 
 
 def _analyze_sentiment(text: str) -> str:
-    """Simple sentiment analysis using keyword matching and basic NLP"""
-    if not text:
-        return "neutral"
+    # """Simple sentiment analysis using keyword matching and basic NLP"""
+    # if not text:
+    #     return "neutral"
     
-    text_lower = text.lower()
+    # text_lower = text.lower()
     
-    # Positive indicators
-    positive_words = [
-        'gains', 'growth', 'profit', 'earnings beat', 'upgrade', 'bullish', 'positive',
-        'strong', 'revenue', 'success', 'expansion', 'innovation', 'partnership',
-        'acquisition', 'dividend', 'buyback', 'outperform', 'record', 'soars'
-    ]
+    # # Positive indicators
+    # positive_words = [
+    #     'gains', 'growth', 'profit', 'earnings beat', 'upgrade', 'bullish', 'positive',
+    #     'strong', 'revenue', 'success', 'expansion', 'innovation', 'partnership',
+    #     'acquisition', 'dividend', 'buyback', 'outperform', 'record', 'soars'
+    # ]
     
-    # Negative indicators
-    negative_words = [
-        'loss', 'decline', 'falls', 'drops', 'downgrade', 'bearish', 'negative',
-        'weak', 'miss', 'concern', 'investigation', 'lawsuit', 'regulatory',
-        'warning', 'cut', 'layoff', 'bankruptcy', 'plunges', 'crash'
-    ]
+    # # Negative indicators
+    # negative_words = [
+    #     'loss', 'decline', 'falls', 'drops', 'downgrade', 'bearish', 'negative',
+    #     'weak', 'miss', 'concern', 'investigation', 'lawsuit', 'regulatory',
+    #     'warning', 'cut', 'layoff', 'bankruptcy', 'plunges', 'crash'
+    # ]
     
-    positive_count = sum(1 for word in positive_words if word in text_lower)
-    negative_count = sum(1 for word in negative_words if word in text_lower)
+    # positive_count = sum(1 for word in positive_words if word in text_lower)
+    # negative_count = sum(1 for word in negative_words if word in text_lower)
     
-    if positive_count > negative_count:
-        return "positive"
-    elif negative_count > positive_count:
-        return "negative"
-    else:
-        return "neutral"
+    # if positive_count > negative_count:
+    #     return "positive"
+    # elif negative_count > positive_count:
+    #     return "negative"
+    # else:
+    #     return "neutral"
+    return "Undefined"
 
 
-def _generate_enhanced_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
+def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
     """Stub news. Replace with your provider later."""
     cutoff = cutoff_date.strftime("%Y-%m-%d")
     samples = [

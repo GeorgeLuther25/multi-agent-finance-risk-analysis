@@ -43,6 +43,16 @@ Your final output should include:
 - Key insights from the news analysis
 
 Use reflection to ensure your analysis is thorough and well-reasoned."""
+VALUATION_SYSTEM = """As a valuation equity analyst, your primary responsibility is to analyze the valuation trends of a given asset or portfolio over an extended time horizon. To complete the task, you must analyze the historical valuation data of the asset or portfolio provided, identify trends and patterns in valuation metrics over time, and interpret the implications of these trends for investors or stakeholders.
+
+Focus your analysis on:
+1. Price trend analysis (upward, downward, sideways movement)
+2. Volatility regime assessment (low, medium, high volatility periods)
+3. Risk-return profile evaluation
+4. Investment implications and outlook
+5. Key patterns and inflection points in the data
+
+Provide clear, actionable insights based on the computational metrics provided."""
 WRITER_SYSTEM = "You are the Writer Agent. Produce a professional Markdown risk report based on inputs."
 
 def _compute_risk(price_csv: str):
@@ -251,17 +261,6 @@ def sentiment_agent(state: State, config: RunnableConfig):
         report=state.report
     )
     return new_state
-
-VALUATION_SYSTEM = """As a valuation equity analyst, your primary responsibility is to analyze the valuation trends of a given asset or portfolio over an extended time horizon. To complete the task, you must analyze the historical valuation data of the asset or portfolio provided, identify trends and patterns in valuation metrics over time, and interpret the implications of these trends for investors or stakeholders.
-
-Focus your analysis on:
-1. Price trend analysis (upward, downward, sideways movement)
-2. Volatility regime assessment (low, medium, high volatility periods)
-3. Risk-return profile evaluation
-4. Investment implications and outlook
-5. Key patterns and inflection points in the data
-
-Provide clear, actionable insights based on the computational metrics provided."""
 
 
 def _compute_valuation_metrics(price_csv: str, ticker: str, period: str) -> ValuationMetrics:
@@ -515,23 +514,23 @@ def writer_agent(state: State, config: RunnableConfig):
     sentiment_section = ""
     if state.sentiment:
         sentiment_section = f"""
-## Sentiment Analysis
-- **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}
-- **Confidence Score**: {state.sentiment.confidence_score:.1%}
-- **News Items Analyzed**: {state.sentiment.news_items_analyzed}
-- **Investment Recommendation**: {state.sentiment.investment_recommendation}
+            ## Sentiment Analysis
+            - **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}
+            - **Confidence Score**: {state.sentiment.confidence_score:.1%}
+            - **News Items Analyzed**: {state.sentiment.news_items_analyzed}
+            - **Investment Recommendation**: {state.sentiment.investment_recommendation}
 
-### Key Insights
-{chr(10).join(f"- {insight}" for insight in state.sentiment.key_insights)}
+            ### Key Insights
+            {chr(10).join(f"- {insight}" for insight in state.sentiment.key_insights)}
 
-### Summary
-{state.sentiment.summary}
-"""
+            ### Summary
+            {state.sentiment.summary}
+            """
     else:
         sentiment_section = """
-## Sentiment Analysis
-No sentiment analysis available - insufficient news data.
-"""
+            ## Sentiment Analysis
+            No sentiment analysis available - insufficient news data.
+            """
 
     # Build valuation section
     valuation_section = ""
@@ -566,20 +565,30 @@ No valuation analysis available - insufficient market data.
 
 **As of:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
 
-## Summary
+## Analyzed Content
 Comprehensive risk and valuation analysis for {state.ticker} over the past {state.period}. Horizon: {state.horizon_days} days.
+
+
 {valuation_section}
+
+
 ## Key Risk Metrics
 - Annualized Volatility: **{state.metrics.annual_vol:.4f}**
 - Max Drawdown: **{state.metrics.max_drawdown:.4f}**
 - 1D VaR (95%): **{state.metrics.daily_var_95:.4f}**
 - Sharpe-like: **{state.metrics.sharpe_like}**
 
+
 ## Risk Flags
 {', '.join(state.metrics.risk_flags) if state.metrics.risk_flags else 'None'}
+
+
 {sentiment_section}
+
+
 ## Recent News (stub)
 {chr(10).join(f"- {n.date}: {n.headline} [{n.sentiment}]" for n in (state.news.items if state.news else []))}
+
 
 ## Methodology
 - Prices from yfinance; log returns
