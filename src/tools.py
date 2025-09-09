@@ -342,7 +342,7 @@ def _analyze_sentiment(text: str) -> str:
     #     return "negative"
     # else:
     #     return "neutral"
-    return "Undefined"
+    return "neutral"
 
 
 def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[str, Any]]:

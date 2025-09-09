@@ -514,23 +514,23 @@ def writer_agent(state: State, config: RunnableConfig):
     sentiment_section = ""
     if state.sentiment:
         sentiment_section = f"""
-            ## Sentiment Analysis
-            - **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}
-            - **Confidence Score**: {state.sentiment.confidence_score:.1%}
-            - **News Items Analyzed**: {state.sentiment.news_items_analyzed}
-            - **Investment Recommendation**: {state.sentiment.investment_recommendation}
+## Sentiment Analysis
+- **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}
+- **Confidence Score**: {state.sentiment.confidence_score:.1%}
+- **News Items Analyzed**: {state.sentiment.news_items_analyzed}
+- **Investment Recommendation**: {state.sentiment.investment_recommendation}
 
-            ### Key Insights
-            {chr(10).join(f"- {insight}" for insight in state.sentiment.key_insights)}
+### Key Insights
+{chr(10).join(f"- {insight}" for insight in state.sentiment.key_insights)}
 
-            ### Summary
-            {state.sentiment.summary}
-            """
+### Summary
+{state.sentiment.summary}
+"""
     else:
         sentiment_section = """
-            ## Sentiment Analysis
-            No sentiment analysis available - insufficient news data.
-            """
+## Sentiment Analysis
+No sentiment analysis available - insufficient news data.
+"""
 
     # Build valuation section
     valuation_section = ""
