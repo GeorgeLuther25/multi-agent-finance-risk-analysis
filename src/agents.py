@@ -154,7 +154,7 @@ def sentiment_agent(state: State, config: RunnableConfig):
     # Prepare news data for analysis
     news_text = []
     for item in state.news.items:
-        news_text.append(f"Date: {item.date}\nHeadline: {item.headline}\nSentiment: {item.sentiment}")
+        news_text.append(f"Date: {item.date}\nHeadline: {item.headline}\nContent: {item.content}")
     
     news_content = "\n\n".join(news_text)
     
