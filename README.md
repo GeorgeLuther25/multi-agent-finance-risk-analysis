@@ -46,6 +46,10 @@ python -m pip install -r requirements.txt
 export LANGCHAIN_API_KEY="ls_your_api_key_here"
 export LANGCHAIN_TRACING_V2="true"
 export LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
+
+export OPENAI_API_KEY=ls_your_api_key_here
+
+export POLYGON_API_KEY=ls_your_api_key_here
 ```
 
 #### Option B: Create .env File (Recommended)
@@ -57,6 +61,10 @@ Create a `.env` file in your project root:
 LANGCHAIN_API_KEY=ls_your_api_key_here
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
+
+OPENAI_API_KEY=ls_your_api_key_here
+
+POLYGON_API_KEY=ls_your_api_key_here
 ```
 
 Then load it before running:
@@ -65,7 +73,7 @@ Then load it before running:
 source .env
 ```
 
-#### Option C: Set in main.py (Code-based)
+<!-- #### Option C: Set in main.py (Code-based)
 
 Edit `src/main.py` and ensure these lines are uncommented:
 
@@ -73,7 +81,7 @@ Edit `src/main.py` and ensure these lines are uncommented:
 # LangSmith configuration
 os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
-```
+``` -->
 
 ## �� Running the System
 
@@ -119,10 +127,13 @@ state = State(
 ### Console Output
 
 The system will display:
-- Debug information about data processing
-- Final state with all agent outputs
-- Risk metrics and flags
-- Complete Markdown report
+- **News Retrieval**: Real-time news fetching with URL content extraction
+- **Valuation Analysis**: Computational metrics (annualized returns, volatility using 252-day formula)
+- **Sentiment Analysis**: Reflection-enhanced prompting with confidence scores
+- **Risk Metrics**: Traditional financial risk calculations and flags
+- **Debug Information**: Data processing steps and agent workflow
+- **Final Report**: Complete Markdown risk analysis with all sections
+- **Final State**: Complete state object with all agent outputs
 
 ### LangSmith Platform (if enabled)
 

@@ -1,24 +1,129 @@
 import os
-from langchain_community.llms import HuggingFaceHub
+from typing import Any, List, Optional
 from langchain_core.language_models import BaseLLM
 from langchain_core.outputs import LLMResult
-from typing import Any, List, Optional
 
-# Use HuggingFace free tier (requires HF_TOKEN environment variable)
-# Or fall back to a simple mock LLM for demonstration
+# Import actual LLM providers
+try:
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    ChatOpenAI = None
 
-def get_llm(temperature: float = 0.0):
-    # Try to use HuggingFace free tier if token is available
-    hf_token = os.getenv("HF_TOKEN")
-    if hf_token:
-        return HuggingFaceHub(
-            repo_id="microsoft/DialoGPT-medium",  # Free model
-            huggingfacehub_api_token=hf_token,
-            temperature=temperature
+try:
+    from langchain_anthropic import ChatAnthropic
+except ImportError:
+    ChatAnthropic = None
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    ChatGoogleGenerativeAI = None
+
+try:
+    from langchain_community.llms import Ollama
+except ImportError:
+    Ollama = None
+
+def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
+    """
+    Get an actual LLM instance based on available API keys and preferences.
+    
+    Args:
+        temperature: Controls randomness in responses (0.0 = deterministic, 1.0 = creative)
+        model_provider: Preferred provider ("openai", "anthropic", "google", "ollama", "auto")
+    
+    Returns:
+        An actual LLM instance for the sentiment agent and other components
+    """
+    
+    # Priority order for auto-detection
+    if model_provider == "auto":
+        # Check for OpenAI API key
+        if os.getenv("OPENAI_API_KEY") and ChatOpenAI:
+            print("🤖 Using OpenAI GPT models")
+            return ChatOpenAI(
+                # model="gpt-3.5-turbo",  # Cost-effective option
+                model="gpt-4o",
+                temperature=temperature,
+                max_tokens=1000
+            )
+        
+        # Check for Anthropic API key
+        elif os.getenv("ANTHROPIC_API_KEY") and ChatAnthropic:
+            print("🤖 Using Anthropic Claude models")
+            return ChatAnthropic(
+                model="claude-3-haiku-20240307",  # Fast and cost-effective
+                temperature=temperature,
+                max_tokens=1000
+            )
+        
+        # Check for Google API key
+        elif os.getenv("GOOGLE_API_KEY") and ChatGoogleGenerativeAI:
+            print("🤖 Using Google Gemini models")
+            return ChatGoogleGenerativeAI(
+                model="gemini-pro",
+                temperature=temperature,
+                max_output_tokens=1000
+            )
+        
+        # # Check for local Ollama installation
+        # elif Ollama:
+        #     try:
+        #         print("🤖 Using local Ollama models")
+        #         return Ollama(
+        #             model="llama2",  # Default model, can be changed
+        #             temperature=temperature
+        #         )
+        #     except Exception:
+        #         print("Exception occured in Using local Ollama models")
+        #         pass
+    
+    # Specific provider selection
+    elif model_provider == "openai" and os.getenv("OPENAI_API_KEY") and ChatOpenAI:
+        print("🤖 Using OpenAI GPT models")
+        return ChatOpenAI(
+            model="gpt-4o-mini",  # Latest cost-effective model
+            temperature=temperature,
+            max_tokens=1000
         )
     
-    # Fall back to mock LLM for free demonstration
+    elif model_provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY") and ChatAnthropic:
+        print("🤖 Using Anthropic Claude models")
+        return ChatAnthropic(
+            model="claude-3-haiku-20240307",
+            temperature=temperature,
+            max_tokens=1000
+        )
+    
+    elif model_provider == "google" and os.getenv("GOOGLE_API_KEY") and ChatGoogleGenerativeAI:
+        print("🤖 Using Google Gemini models")
+        return ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            temperature=temperature,
+            max_output_tokens=1000
+        )
+    
+    # elif model_provider == "ollama" and Ollama:
+    #     print("🤖 Using local Ollama models")
+    #     try:
+    #         return Ollama(
+    #             model="llama2",
+    #             temperature=temperature
+    #         )
+    #     except Exception:
+    #         print("Exception occured in Using local Ollama models")
+    #         pass
+    
+    # Fall back to enhanced mock for development/testing
+    print("⚠️  No API keys found - using mock LLM for testing")
+    print("   To use actual agents, set one of:")
+    print("   • OPENAI_API_KEY for OpenAI GPT models")
+    print("   • ANTHROPIC_API_KEY for Anthropic Claude models") 
+    print("   • GOOGLE_API_KEY for Google Gemini models")
+    print("   • Install Ollama locally for free models")
+    
     return MockLLM(temperature=temperature)
+
 
 class MockLLM(BaseLLM):
     """Simple mock LLM for free demonstration - no API calls needed"""
