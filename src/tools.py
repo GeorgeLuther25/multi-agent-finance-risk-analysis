@@ -4,7 +4,7 @@ import requests
 import json
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from langchain.tools import tool
 from textblob import TextBlob
 import warnings
@@ -355,51 +355,77 @@ def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[st
     return str(samples)
 
 
-@tool("query_10k_documents")
-def query_10k_documents(ticker: str, query: str) -> str:
+@tool
+def query_10k_documents(ticker: str, query: Union[str, List[str]]) -> Union[str, List[str]]:
     """
-    Query 10-K/10-Q documents using RAG (Retrieval-Augmented Generation).
-    
-    Use this tool to extract specific information from 10-K/10-Q filings.
-    Provide a natural language query about the company's fundamentals.
+    Query 10-K/10-Q documents using RAG to find specific information.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        query: Natural language question about the company's 10-K filing
-               (e.g., "What are the key financial metrics?", "What are the main risk factors?")
-    
+        query: Single query string or list of query strings to search for in the documents
+        
     Returns:
-        Relevant information extracted from the 10-K/10-Q documents
+        If query is a string: Returns relevant text content from the documents
+        If query is a list: Returns list of results corresponding to each query
+        
+    Example:
+        # Single query
+        result = query_10k_documents("AAPL", "What are the main revenue sources?")
+        
+        # Multiple queries
+        results = query_10k_documents("AAPL", [
+            "What are the key financial metrics?",
+            "What are the main business segments?",
+            "What are the primary risk factors?"
+        ])
     """
-    from .rag_utils import FundamentalRAG, initialize_sample_data
-    
     try:
+        from .rag_utils import FundamentalRAG
+        import ast
+        
         # Initialize RAG system
         rag_system = FundamentalRAG()
         
-        # Check if we have data for this ticker, if not initialize sample data
-        available_filings = rag_system.get_available_filings(ticker.upper())
-        if not available_filings:
-            print(f"No filings found for {ticker}, initializing sample data...")
-            initialize_sample_data(rag_system)
-            available_filings = rag_system.get_available_filings(ticker.upper())
+        # Handle string representation of list (common when passed from agent tools)
+        if isinstance(query, str) and query.strip().startswith('[') and query.strip().endswith(']'):
+            try:
+                # Try to parse string as list
+                query = ast.literal_eval(query)
+                print(f"Parsed string list into actual list: {query}")
+            except (ValueError, SyntaxError):
+                # If parsing fails, treat as single string query
+                print(f"Failed to parse as list, treating as single query: {query}")
         
-        if not available_filings:
-            return f"No 10-K/10-Q data available for {ticker}. Unable to provide fundamental analysis."
+        # Handle both single query and list of queries
+        if isinstance(query, str):
+            # Single query - return string result
+            chunks = rag_system.retrieve_relevant_chunks(ticker, query)
+            if chunks:
+                # Format chunks into readable text
+                result = "\n---DOCUMENT SECTION---\n".join([
+                    chunk.page_content for chunk in chunks
+                ])
+                return f"Retrieved single query result for {ticker}'s 10K/10Q filing:{query}:\n\n{result}"
+            else:
+                return f"No relevant information found for query: {query}"
         
-        # Retrieve relevant document chunks
-        relevant_chunks = rag_system.retrieve_relevant_chunks(ticker.upper(), query, k=5)
-        
-        if not relevant_chunks:
-            return f"No relevant information found for query: '{query}' in {ticker}'s filings."
-        
-        # Combine chunk content
-        context = "\n\n---DOCUMENT SECTION---\n".join([
-            chunk.page_content for chunk in relevant_chunks
-        ])
-        
-        # Return the context for the LLM to process
-        return f"Retrieved information from {ticker}'s 10-K filing:\n\n{context}"
-        
+        elif isinstance(query, list):
+            # Multiple queries - return list of results
+            results = []
+            for q in query:
+                chunks = rag_system.retrieve_relevant_chunks(ticker, q)
+                if chunks:
+                    # Format chunks into readable text
+                    result = "\n---DOCUMENT SECTION---\n".join([
+                        chunk.page_content for chunk in chunks
+                    ])
+                    results.append(f"Retrieved relevant info for {ticker}'s 10K/10Q filing:{q}:\n\n {result}")
+                else:
+                    results.append(f"No relevant information found for query: {q}")
+            return results
+            
+        else:
+            return "Error: Query must be either a string or list of strings"
+            
     except Exception as e:
-        return f"Error querying 10-K documents for {ticker}: {str(e)}"
+        return f"Error querying documents: {str(e)}"

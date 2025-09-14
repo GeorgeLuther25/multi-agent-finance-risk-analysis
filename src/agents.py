@@ -329,9 +329,11 @@ def fundamental_agent(state: State, config: RunnableConfig):
         rag_tool = Tool(
             name="query_10k_documents",
             description=(
-                f"Query {state.ticker}'s 10-K/10-Q SEC filings for specific information. "
-                "Use this tool to extract financial metrics, business information, "
-                "risk factors, and other relevant data from the company's SEC filings."
+                f"Query {state.ticker}'s 10-K/10-Q SEC filings for information. "
+                "This tool can accept either a single query string or a list of queries. "
+                "For comprehensive analysis, pass a list of queries like: "
+                "['financial metrics', 'business segments', 'risk factors', 'competitive position']. "
+                "This will return corresponding results for each query in a single call."
             ),
             func=lambda query: query_10k_documents.invoke({
                 "ticker": state.ticker,
@@ -350,12 +352,17 @@ def fundamental_agent(state: State, config: RunnableConfig):
             You are conducting fundamental analysis for {state.ticker}. You have access to a tool
             that can query the company's 10-K/10-Q SEC filings for specific information.
             
-            Your task:
-            1. Use the query_10k_documents tool to gather relevant information
-            2. Query for financial metrics, business segments, risks, and competitive position
-            3. Provide comprehensive fundamental analysis based on the retrieved information
+            IMPORTANT: The tool can accept a LIST of queries in a single call. Instead of making
+            multiple separate tool calls, use ONE tool call with a list like:
+            ['key financial metrics', 'business segments', 'risk factors', 'competitive position']
             
-            Make multiple tool calls to gather comprehensive information, then provide:
+            This will be much more efficient and give you all the information at once.
+            
+            Your task:
+            1. Use ONE tool call with a list of relevant queries to gather comprehensive information
+            2. Analyze all the retrieved information to provide fundamental analysis
+            
+            Provide:
             - Executive summary (2-3 sentences)
             - Key financial insights
             - Business highlights
@@ -364,12 +371,12 @@ def fundamental_agent(state: State, config: RunnableConfig):
             - Financial health score (0-10)
             """),
             ("human", "Please analyze {ticker} using the 10-K/10-Q documents. "
-             "Start by querying the filings for key information."),
+             "Use a single tool call with multiple queries for efficiency."),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
         
         agent = create_openai_functions_agent(llm, tools, prompt)
-        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=3)
         
         # Execute the agent
         try:
