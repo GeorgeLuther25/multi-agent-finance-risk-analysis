@@ -14,6 +14,10 @@ from .schemas import (
     MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport,
     SentimentSummary, ValuationMetrics, FundamentalAnalysis
 )
+from .rag_utils import initialize_sample_data, FundamentalRAG, batch_ingest_documents
+from langchain.tools import Tool
+from langchain.agents import create_openai_functions_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -292,16 +296,13 @@ def fundamental_agent(state: State, config: RunnableConfig):
     """
     Fundamental agent that analyzes 10-K/10-Q data using RAG as a tool.
     """
-    from .rag_utils import initialize_sample_data, FundamentalRAG
-    from langchain.agents import create_openai_functions_agent, AgentExecutor
-    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-    
     # Initialize RAG system to ensure sample data exists
     rag_system = FundamentalRAG()
     available_filings = rag_system.get_available_filings(state.ticker)
     if not available_filings:
         print(f"No filings found for {state.ticker}, initializing sample data...")
-        initialize_sample_data(rag_system)
+        # initialize_sample_data(rag_system)
+        batch_ingest_documents(rag_system, directory="./data/filings")
         available_filings = rag_system.get_available_filings(state.ticker)
     
     if not available_filings:
@@ -324,8 +325,6 @@ def fundamental_agent(state: State, config: RunnableConfig):
         )
     else:
         # Create a custom tool that wraps our RAG function
-        from langchain.tools import Tool
-        
         rag_tool = Tool(
             name="query_10k_documents",
             description=(
@@ -394,7 +393,7 @@ def fundamental_agent(state: State, config: RunnableConfig):
             filing_type=filing_info.get("filing_type", "10-K"),
             filing_date=filing_info.get("ingestion_date", "Unknown"),
             analysis_date=datetime.now().strftime("%Y-%m-%d"),
-            executive_summary=analysis_content[:1000] + "..." if len(analysis_content) > 1000 else analysis_content,
+            executive_summary=analysis_content,
             key_financial_metrics={"analysis": "Agent-based RAG tool analysis"},
             business_highlights=[
                 "Tool-based analysis from SEC filings",

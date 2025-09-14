@@ -4,6 +4,7 @@ Provides document ingestion, vector storage, and retrieval capabilities.
 """
 
 import os
+import glob
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -151,7 +152,6 @@ class FundamentalRAG:
         except Exception as e:
             print(f"Error getting available filings for {ticker}: {e}")
             return []
-
 
 # Sample 10-K/10-Q document URLs (these would normally be downloaded from SEC EDGAR)
 SAMPLE_DOCUMENTS = {
@@ -316,3 +316,162 @@ Please provide a detailed analysis based solely on the information available in 
     response = llm.invoke([{"role": "user", "content": user_prompt}], config=config)
     
     return response.content if hasattr(response, 'content') else str(response)
+
+
+def validate_file_path(file_path: str) -> bool:
+    """Validate that the file exists and is a PDF."""
+    if not os.path.exists(file_path):
+        print(f"❌ Error: File not found: {file_path}")
+        return False
+
+    if not file_path.lower().endswith('.pdf'):
+        print(f"⚠️  Warning: File is not a PDF: {file_path}")
+        print("   The system is designed for PDF documents but will attempt to process.")
+
+    return True
+
+
+def validate_ticker(ticker: str) -> bool:
+    """Validate ticker symbol format."""
+    if not ticker or len(ticker) < 1 or len(ticker) > 5:
+        print(f"❌ Error: Invalid ticker symbol: {ticker}")
+        print("   Ticker should be 1-5 characters long (e.g., AAPL, MSFT)")
+        return False
+    return True
+
+
+def validate_filing_type(filing_type: str) -> bool:
+    """Validate filing type."""
+    valid_types = ["10-K", "10-Q", "8-K", "20-F"]
+    if filing_type not in valid_types:
+        print(f"❌ Error: Invalid filing type: {filing_type}")
+        print(f"   Valid types are: {', '.join(valid_types)}")
+        return False
+    return True
+
+
+def ingest_single_document(
+    rag_system: FundamentalRAG,
+    ticker: str,
+    filing_type: str,
+    document_path: str
+) -> bool:
+    """Ingest a single document."""
+    print("\n📄 Ingesting document:")
+    print(f"   Ticker: {ticker}")
+    print(f"   Filing Type: {filing_type}")
+    print(f"   Path: {document_path}")
+
+    # Validate inputs
+    if not validate_ticker(ticker):
+        return False
+
+    if not validate_filing_type(filing_type):
+        return False
+
+    if not validate_file_path(document_path):
+        return False
+
+    # Perform ingestion
+    try:
+        success = rag_system.ingest_document(ticker.upper(), filing_type, document_path)
+        if success:
+            print(f"✅ Successfully ingested {ticker} {filing_type}")
+            return True
+        else:
+            print(f"❌ Failed to ingest {ticker} {filing_type}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error during ingestion: {e}")
+        return False
+
+
+def parse_filename_metadata(filename: str) -> Optional[Dict[str, str]]:
+    """
+    Parse metadata from filename using common naming conventions.
+
+    Expected formats:
+    - AAPL_10K_2023.pdf
+    - MSFT-10Q-Q1-2023.pdf
+    - ticker_filing_year.pdf
+    """
+    basename = os.path.basename(filename).replace('.pdf', '').replace('.PDF', '')
+
+    # Try different parsing patterns
+    parts = basename.replace('-', '_').split('_')
+
+    if len(parts) >= 2:
+        ticker = parts[0].upper()
+        filing_info = '_'.join(parts[1:]).upper()
+
+        # Determine filing type
+        if '10K' in filing_info or '10-K' in filing_info:
+            filing_type = '10-K'
+        elif '10Q' in filing_info or '10-Q' in filing_info:
+            filing_type = '10-Q'
+        elif '8K' in filing_info or '8-K' in filing_info:
+            filing_type = '8-K'
+        elif '20F' in filing_info or '20-F' in filing_info:
+            filing_type = '20-F'
+        else:
+            # Default to 10-K if unclear
+            filing_type = '10-K'
+
+        return {
+            'ticker': ticker,
+            'filing_type': filing_type
+        }
+
+    return None
+
+
+def batch_ingest_documents(rag_system: FundamentalRAG, directory: str) -> int:
+    """Ingest all PDF documents from a directory."""
+    if not os.path.exists(directory):
+        print(f"❌ Error: Directory not found: {directory}")
+        return 0
+
+    # Find all PDF files
+    pdf_patterns = [
+        os.path.join(directory, "*.pdf"),
+        os.path.join(directory, "*.PDF")
+        # os.path.join(directory, "**", "*.pdf"),
+        # os.path.join(directory, "**", "*.PDF")
+    ]
+
+    pdf_files = []
+    for pattern in pdf_patterns:
+        pdf_files.extend(glob.glob(pattern, recursive=True))
+
+    if not pdf_files:
+        print(f"❌ No PDF files found in directory: {directory}")
+        return 0
+
+    print(f"\n📁 Found {len(pdf_files)} PDF files to process:")
+    for pdf_file in pdf_files:
+        print(f"   - {os.path.basename(pdf_file)}")
+
+    successful_ingestions = 0
+
+    for pdf_file in pdf_files:
+        print("\n" + "="*60)
+
+        # Try to parse metadata from filename
+        metadata = parse_filename_metadata(pdf_file)
+
+        if metadata:
+            success = ingest_single_document(
+                rag_system,
+                metadata['ticker'],
+                metadata['filing_type'],
+                pdf_file
+            )
+            if success:
+                successful_ingestions += 1
+        else:
+            print(f"⚠️  Could not parse metadata from filename: {os.path.basename(pdf_file)}")
+            print("   Please use format: TICKER_FILING-TYPE_YEAR.pdf (e.g., AAPL_10K_2023.pdf)")
+            print("   Skipping this file.")
+
+    return successful_ingestions

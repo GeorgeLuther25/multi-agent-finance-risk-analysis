@@ -49,7 +49,7 @@ if __name__ == "__main__":
         if hasattr(final_state, 'report') and final_state.report:
             print(final_state.report.markdown_report)
         # else:
-    print("Final state:", final_state)
+    # print("Final state:", final_state)
     if hasattr(final_state, 'metrics'):
         print("Metrics:", final_state.metrics)
     if hasattr(final_state, 'market'):
