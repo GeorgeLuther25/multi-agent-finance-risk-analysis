@@ -99,8 +99,8 @@ class State(BaseModel):
     report: Optional[RiskReport] = None
 
 def data_agent(state: State, config: RunnableConfig):
-    llm = get_llm()
-    _ = llm.invoke([SystemMessage(content=DATA_SYSTEM), HumanMessage(content=f"ticker={state.ticker}")])  # no-op, just for tracing
+    # llm = get_llm()
+    # _ = llm.invoke([SystemMessage(content=DATA_SYSTEM), HumanMessage(content=f"ticker={state.ticker}")])  # no-op, just for tracing
     price_csv = get_price_history.invoke({"ticker": state.ticker, "period": state.period, "interval": state.interval})
     news_raw = get_recent_news.invoke({"ticker": state.ticker, "days": min(14, state.horizon_days)})
     items = []
@@ -508,7 +508,7 @@ def risk_agent(state: State, config: RunnableConfig):
     return new_state
 
 def writer_agent(state: State, config: RunnableConfig):
-    llm = get_llm()
+    # llm = get_llm()
     
     # Build sentiment section
     sentiment_section = ""
@@ -598,7 +598,7 @@ Comprehensive risk and valuation analysis for {state.ticker} over the past {stat
 - Valuation metrics: R_annualized = ((1 + R_cumulative)^(252/n)) - 1, σ_annualized = σ_daily × √252
 - Sentiment analysis uses LLM-based reflection-enhanced summarization
 """
-    _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
+    # _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
     
     # Create key findings including valuation analysis
     key_findings = ["Automated metrics computed from historical data.", "Sentiment analysis from recent news."]
