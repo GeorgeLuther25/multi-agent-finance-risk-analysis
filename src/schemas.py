@@ -1,4 +1,5 @@
 from typing import List, Literal, Dict, Any, Optional
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 
@@ -69,3 +70,35 @@ class RiskReport(BaseModel):
     risk_flags: List[str]
     methodology: str
     markdown_report: str
+
+
+class FundamentalAnalysis(BaseModel):
+    ticker: str
+    filing_type: str  # "10-K" or "10-Q"
+    filing_date: str
+    analysis_date: str
+    executive_summary: str
+    key_financial_metrics: Dict[str, Any]
+    business_highlights: List[str]
+    risk_factors: List[str]
+    competitive_position: str
+    growth_prospects: str
+    financial_health_score: float = Field(ge=0.0, le=10.0)
+    investment_thesis: str
+    concerns_and_risks: List[str]
+    methodology: str = "RAG-enhanced 10-K/10-Q document analysis"
+
+
+class ChatMessage(BaseModel):
+    role: Literal["assistant", "user", "system"]
+    content: str
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class GroupChatSession(BaseModel):
+    session_id: str
+    participants: List[str] = Field(default_factory=list)
+    messages: List[ChatMessage] = Field(default_factory=list)
+    current_speaker: Optional[str] = None
+    max_rounds: int = 3
+    round_count: int = 0

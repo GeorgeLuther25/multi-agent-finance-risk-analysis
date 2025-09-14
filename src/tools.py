@@ -353,3 +353,53 @@ def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[st
         {"date": cutoff, "headline": f"{ticker} faces regulatory query", "sentiment": "negative"},
     ]
     return str(samples)
+
+
+@tool("query_10k_documents")
+def query_10k_documents(ticker: str, query: str) -> str:
+    """
+    Query 10-K/10-Q documents using RAG (Retrieval-Augmented Generation).
+    
+    Use this tool to extract specific information from 10-K/10-Q filings.
+    Provide a natural language query about the company's fundamentals.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        query: Natural language question about the company's 10-K filing
+               (e.g., "What are the key financial metrics?", "What are the main risk factors?")
+    
+    Returns:
+        Relevant information extracted from the 10-K/10-Q documents
+    """
+    from .rag_utils import FundamentalRAG, initialize_sample_data
+    
+    try:
+        # Initialize RAG system
+        rag_system = FundamentalRAG()
+        
+        # Check if we have data for this ticker, if not initialize sample data
+        available_filings = rag_system.get_available_filings(ticker.upper())
+        if not available_filings:
+            print(f"No filings found for {ticker}, initializing sample data...")
+            initialize_sample_data(rag_system)
+            available_filings = rag_system.get_available_filings(ticker.upper())
+        
+        if not available_filings:
+            return f"No 10-K/10-Q data available for {ticker}. Unable to provide fundamental analysis."
+        
+        # Retrieve relevant document chunks
+        relevant_chunks = rag_system.retrieve_relevant_chunks(ticker.upper(), query, k=5)
+        
+        if not relevant_chunks:
+            return f"No relevant information found for query: '{query}' in {ticker}'s filings."
+        
+        # Combine chunk content
+        context = "\n\n---DOCUMENT SECTION---\n".join([
+            chunk.page_content for chunk in relevant_chunks
+        ])
+        
+        # Return the context for the LLM to process
+        return f"Retrieved information from {ticker}'s 10-K filing:\n\n{context}"
+        
+    except Exception as e:
+        return f"Error querying 10-K documents for {ticker}: {str(e)}"
