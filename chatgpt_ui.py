@@ -14,6 +14,9 @@ import seaborn as sns
 import io
 import base64
 
+from dotenv import load_dotenv
+load_dotenv()
+
 st.set_page_config(page_title="ChatGPT UI", page_icon="🤖", layout="centered")
 
 st.title("ChatGPT-like UI with OpenAI API")
@@ -25,7 +28,7 @@ st.title("ChatGPT-like UI with OpenAI API")
 #     st.warning("Please enter your OpenAI API key in the sidebar.")
 #     st.stop()
 
-api_key = 'add-your-api-key-here'
+api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
 def get_stock_data(symbol, period="1y"):
@@ -294,13 +297,13 @@ if submit and user_input.strip():
             
             # First API call with function calling
             response = client.chat.completions.create(
-                # model="gpt-4-turbo-preview",
-                model="gpt-5",
+                model="gpt-4-turbo-preview",
+                # model="gpt-5",
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
-                # temperature=0.7,
-                # max_tokens=2000,
+                temperature=0.7,
+                max_tokens=2000,
             )
             
             message = response.choices[0].message
