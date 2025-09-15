@@ -356,22 +356,18 @@ def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[st
 
 
 @tool
-def query_10k_documents(ticker: str, query: Union[str, List[str]]) -> Union[str, List[str]]:
+def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
     """
     Query 10-K/10-Q documents using RAG to find specific information.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        query: Single query string or list of query strings to search for in the documents
+        query: Single query string to search for in the documents, which gets converted to list.
         
     Returns:
-        If query is a string: Returns relevant text content from the documents
-        If query is a list: Returns list of results corresponding to each query
+        Returns list of results corresponding to each query
         
     Example:
-        # Single query
-        result = query_10k_documents("AAPL", "What are the main revenue sources?")
-        
         # Multiple queries
         results = query_10k_documents("AAPL", [
             "What are the key financial metrics?",
@@ -388,28 +384,10 @@ def query_10k_documents(ticker: str, query: Union[str, List[str]]) -> Union[str,
         
         # Handle string representation of list (common when passed from agent tools)
         if isinstance(query, str) and query.strip().startswith('[') and query.strip().endswith(']'):
-            try:
-                # Try to parse string as list
-                query = ast.literal_eval(query)
-                print(f"Parsed string list into actual list: {query}")
-            except (ValueError, SyntaxError):
-                # If parsing fails, treat as single string query
-                print(f"Failed to parse as list, treating as single query: {query}")
-        
-        # Handle both single query and list of queries
-        if isinstance(query, str):
-            # Single query - return string result
-            chunks = rag_system.retrieve_relevant_chunks(ticker, query)
-            if chunks:
-                # Format chunks into readable text
-                result = "\n---DOCUMENT SECTION---\n".join([
-                    chunk.page_content for chunk in chunks
-                ])
-                return f"Retrieved single query result for {ticker}'s 10K/10Q filing:{query}:\n\n{result}"
-            else:
-                return f"No relevant information found for query: {query}"
-        
-        elif isinstance(query, list):
+            # Try to parse string as list
+            query = ast.literal_eval(query)
+            print(f"Parsed string list into actual list: {query}")
+    
             # Multiple queries - return list of results
             results = []
             for q in query:
@@ -423,9 +401,8 @@ def query_10k_documents(ticker: str, query: Union[str, List[str]]) -> Union[str,
                 else:
                     results.append(f"No relevant information found for query: {q}")
             return results
-            
         else:
-            return "Error: Query must be either a string or list of strings"
+            return "Error: Query must be a string that starts with [ and ends with ]"
             
     except Exception as e:
         return f"Error querying documents: {str(e)}"

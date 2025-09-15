@@ -329,10 +329,10 @@ def fundamental_agent(state: State, config: RunnableConfig):
             name="query_10k_documents",
             description=(
                 f"Query {state.ticker}'s 10-K/10-Q SEC filings for information. "
-                "This tool can accept either a single query string or a list of queries. "
-                "For comprehensive analysis, pass a list of queries like: "
-                "['financial metrics', 'business segments', 'risk factors', 'competitive position']. "
-                "This will return corresponding results for each query in a single call."
+                "This tool accepts a single query string. To pass multiple queries efficiently, "
+                "format them as a string representation of a Python list, like: "
+                "\"['financial metrics', 'business segments', 'risk factors', 'competitive position']\". "
+                "The tool will parse this string and process all queries in a single call."
             ),
             func=lambda query: query_10k_documents.invoke({
                 "ticker": state.ticker,
@@ -351,14 +351,15 @@ def fundamental_agent(state: State, config: RunnableConfig):
             You are conducting fundamental analysis for {state.ticker}. You have access to a tool
             that can query the company's 10-K/10-Q SEC filings for specific information.
             
-            IMPORTANT: The tool can accept a LIST of queries in a single call. Instead of making
-            multiple separate tool calls, use ONE tool call with a list like:
-            ['key financial metrics', 'business segments', 'risk factors', 'competitive position']
+            IMPORTANT: The tool accepts queries as a STRING. To batch multiple queries efficiently,
+            pass them as a STRING representation of a Python list, like this:
+            "['key financial metrics', 'business segments', 'risk factors', 'competitive position']"
             
-            This will be much more efficient and give you all the information at once.
+            Note: Use double quotes around the entire string, and single quotes inside for each query.
+            This will be much more efficient than making multiple separate tool calls.
             
             Your task:
-            1. Use ONE tool call with a list of relevant queries to gather comprehensive information
+            1. Use ONE tool call with a STRING containing multiple queries to gather comprehensive information
             2. Analyze all the retrieved information to provide fundamental analysis
             
             Provide:
@@ -370,7 +371,8 @@ def fundamental_agent(state: State, config: RunnableConfig):
             - Financial health score (0-10)
             """),
             ("human", "Please analyze {ticker} using the 10-K/10-Q documents. "
-             "Use a single tool call with multiple queries for efficiency."),
+             "Use a single tool call with a string containing multiple queries for efficiency. "
+             "Format: \"['query1', 'query2', 'query3', 'query4']\""),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
         
