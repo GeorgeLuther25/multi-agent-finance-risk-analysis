@@ -8,10 +8,7 @@ Advanced multi-agent system for comprehensive financial analysis using LangChain
 ```
 multi-agent-finance-risk-analysis/
 ├── README.md                        # This documentation
-├── INGESTION_GUIDE.md              # Detailed document ingestion guide
 ├── requirements.txt                 # Python dependencies
-├── ingest_documents.py             # Main document ingestion script
-├── example_ingestion.py            # Example usage for document ingestion
 ├── .env.example                    # Environment variables template
 ├── src/
 │   ├── __init__.py
@@ -52,8 +49,6 @@ The system processes analysis through these specialized agents:
 
 ## 📚 Additional Documentation
 
-- **[INGESTION_GUIDE.md](INGESTION_GUIDE.md)** - Complete guide for document ingestion
-- **Sample Usage**: Run `python example_ingestion.py` for examples
 - **LangSmith Traces**: Monitor agent execution at [smith.langchain.com](https://smith.langchain.com/)
 
 ## 🔧 Troubleshooting
@@ -61,7 +56,6 @@ The system processes analysis through these specialized agents:
 ### Common Issues
 
 #### Fundamental Agent Issues
-- **"No filings found"**: Run `python ingest_documents.py --init-samples` to initialize sample data
 - **"OpenAI API key not set"**: Ensure `OPENAI_API_KEY` is set in your environment
 - **"ChromaDB errors"**: Delete `./data/chroma_db/` and reinitialize with sample data
 - **"Agent timeout"**: Increase `max_iterations` in the fundamental agent configuration
