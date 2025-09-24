@@ -609,6 +609,7 @@ def valuation_agent(state: State, config: RunnableConfig):
         - Annualized Volatility: {valuation_metrics.annualized_volatility:.4f} ({valuation_metrics.annualized_volatility:.2%})
         - Price Trend: {valuation_metrics.price_trend}
         - Volatility Regime: {valuation_metrics.volatility_regime}
+        - Market Price: {state.market.price_csv}
         
         Provide enhanced trend analysis and investment implications based on these metrics.
         """
