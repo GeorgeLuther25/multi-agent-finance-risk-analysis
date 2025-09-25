@@ -369,11 +369,7 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
         
     Example:
         # Multiple queries
-        results = query_10k_documents("AAPL", [
-            "What are the key financial metrics?",
-            "What are the main business segments?",
-            "What are the primary risk factors?"
-        ])
+        results = query_10k_documents("AAPL", 'financial metrics, business segments, risk factors, competitive position')
     """
     try:
         from .rag_utils import FundamentalRAG
@@ -383,14 +379,13 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
         rag_system = FundamentalRAG()
         
         # Handle string representation of list (common when passed from agent tools)
-        if isinstance(query, str) and query.strip().startswith('[') and query.strip().endswith(']'):
-            # Try to parse string as list
-            query = ast.literal_eval(query)
-            print(f"Parsed string list into actual list: {query}")
+        if isinstance(query, str) and ',' in query:
+            query_list = [q.strip() for q in query.split(',')]
+            print(f"Parsed string list into actual list: {query_list}")
     
             # Multiple queries - return list of results
             results = []
-            for q in query:
+            for q in query_list:
                 chunks = rag_system.retrieve_relevant_chunks(ticker, q)
                 if chunks:
                     # Format chunks into readable text
@@ -402,7 +397,7 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
                     results.append(f"No relevant information found for query: {q}")
             return results
         else:
-            return "Error: Query must be a string that starts with [ and ends with ]"
+            return "Error: Query must be a string of comma separated values."
             
     except Exception as e:
         return f"Error querying documents: {str(e)}"

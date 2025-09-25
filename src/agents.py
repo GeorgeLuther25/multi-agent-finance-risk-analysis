@@ -16,7 +16,7 @@ from .schemas import (
 )
 from .rag_utils import initialize_sample_data, FundamentalRAG, batch_ingest_documents
 from langchain.tools import Tool
-from langchain.agents import create_openai_functions_agent, AgentExecutor
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from dotenv import load_dotenv
@@ -329,10 +329,8 @@ def fundamental_agent(state: State, config: RunnableConfig):
             name="query_10k_documents",
             description=(
                 f"Query {state.ticker}'s 10-K/10-Q SEC filings for information. "
-                "This tool accepts a single query string. To pass multiple queries efficiently, "
-                "format them as a string representation of a Python list, like: "
-                "\"['financial metrics', 'business segments', 'risk factors', 'competitive position']\". "
-                "The tool will parse this string and process all queries in a single call."
+                "Pass a string with comma-separated queries like: "
+                "'financial metrics, business segments, risk factors, competitive position'"
             ),
             func=lambda query: query_10k_documents.invoke({
                 "ticker": state.ticker,
@@ -351,32 +349,28 @@ def fundamental_agent(state: State, config: RunnableConfig):
             You are conducting fundamental analysis for {state.ticker}. You have access to a tool
             that can query the company's 10-K/10-Q SEC filings for specific information.
             
-            IMPORTANT: The tool accepts queries as a STRING. To batch multiple queries efficiently,
-            pass them as a STRING representation of a Python list, like this:
-            "['key financial metrics', 'business segments', 'risk factors', 'competitive position']"
-            
-            Note: Use double quotes around the entire string, and single quotes inside for each query.
-            This will be much more efficient than making multiple separate tool calls.
+            IMPORTANT: When calling the query_10k_documents tool, pass your queries as a 
+            comma-separated string like this:
+            "financial metrics, business segments, risk factors, competitive position"
             
             Your task:
-            1. Use ONE tool call with a STRING containing multiple queries to gather comprehensive information
-            2. Analyze all the retrieved information to provide fundamental analysis
+            1. Call the tool once with multiple queries as a comma-separated string
+            2. Analyze all the retrieved information to provide comprehensive fundamental analysis
             
             Provide:
             - Executive summary (2-3 sentences)
-            - Key financial insights
-            - Business highlights
-            - Risk assessment
-            - Investment thesis
-            - Financial health score (0-10)
+            - Key financial insights and metrics
+            - Business highlights and competitive advantages
+            - Risk assessment and concerns
+            - Investment thesis and recommendation
+            - Financial health score (0-10) with justification
             """),
             ("human", "Please analyze {ticker} using the 10-K/10-Q documents. "
-             "Use a single tool call with a string containing multiple queries for efficiency. "
-             "Format: \"['query1', 'query2', 'query3', 'query4']\""),
+             "Use the tool with comma-separated queries like: 'financial metrics, business segments, risk factors, competitive position'"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
         
-        agent = create_openai_functions_agent(llm, tools, prompt)
+        agent = create_tool_calling_agent(llm, tools, prompt)
         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=3)
         
         # Execute the agent

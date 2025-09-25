@@ -13,10 +13,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.runnables import RunnableConfig
 
-from .config import get_llm
+from .config import get_llm, get_embeddings
 
 
 class FundamentalRAG:
@@ -26,18 +25,43 @@ class FundamentalRAG:
     
     def __init__(self, persist_directory: str = "./data/chroma_db"):
         self.persist_directory = persist_directory
-        self.embeddings = OpenAIEmbeddings()
+        self.embeddings = get_embeddings()
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
             length_function=len,
         )
+        self.collection_name = "fundamental_filings_Ollama" if os.getenv("OLLAMA_MODEL") else "fundamental_filings"
         
-        # Initialize or load existing vector store
-        self.vectorstore = Chroma(
-            persist_directory=persist_directory,
-            embedding_function=self.embeddings
-        )
+        # Initialize or load existing vector store with dimension compatibility check
+        try:
+            self.vectorstore = Chroma(
+                collection_name=self.collection_name,
+                persist_directory=persist_directory,
+                embedding_function=self.embeddings
+            )
+            # Test if embeddings are compatible by trying a simple similarity search
+            test_embedding = self.embeddings.embed_query("test")
+            print(f"🔍 Testing ChromaDB compatibility with {len(test_embedding)}-dimensional embeddings")
+            # Try a simple query to check if dimensions match
+            self.vectorstore.similarity_search("test", k=1)
+            print("✅ ChromaDB collection is compatible")
+        except Exception as e:
+            if "dimension" in str(e).lower() or "expecting embedding with dimension" in str(e):
+                print(f"🔄 Embedding dimension mismatch detected: {str(e)}")
+                print("🔄 Recreating vector store with new embedding dimensions...")
+                # Remove existing collection and create new one
+                import shutil
+                if os.path.exists(persist_directory):
+                    shutil.rmtree(persist_directory)
+                os.makedirs(persist_directory, exist_ok=True)
+                self.vectorstore = Chroma(
+                    persist_directory=persist_directory,
+                    embedding_function=self.embeddings
+                )
+                print("✅ Created new ChromaDB collection")
+            else:
+                raise e
         
         # Ensure data directory exists
         os.makedirs(persist_directory, exist_ok=True)

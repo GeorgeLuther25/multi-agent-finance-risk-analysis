@@ -67,8 +67,13 @@ The system processes analysis through these specialized agents:
 
 ### Environment Variables Checklist
 ```bash
-# Required for basic functionality
-export OPENAI_API_KEY="your-openai-key"
+# Required for basic functionality (choose one)
+export OPENAI_API_KEY="your-openai-key"    # For OpenAI models
+# OR use local Ollama (no API key needed)
+export MODEL_PROVIDER="ollama"             # Force Ollama usage
+export OLLAMA_MODEL="llama3.2:3b"         # Optional: specify model
+
+# Required for market data
 export POLYGON_API_KEY="your-polygon-key"
 
 # Optional for LangSmith tracing
@@ -170,7 +175,9 @@ export LANGCHAIN_TRACING_V2="true"
 export LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
 
 export OPENAI_API_KEY=ls_your_api_key_here
-
+# OR use local Ollama (no API key needed)
+export MODEL_PROVIDER="ollama"             # Force Ollama usage
+export OLLAMA_MODEL="llama3.2:3b"         # Optional: specify 
 export POLYGON_API_KEY=ls_your_api_key_here
 ```
 
@@ -185,6 +192,8 @@ LANGCHAIN_TRACING_V2=true
 LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
 
 OPENAI_API_KEY=ls_your_api_key_here
+# OR use local Ollama (no API key needed)
+OLLAMA_MODEL="llama3.2:3b"
 
 POLYGON_API_KEY=ls_your_api_key_here
 ```
@@ -274,12 +283,55 @@ Visit [https://smith.langchain.com/](https://smith.langchain.com/) to see:
 Edit `src/config.py` to change the language model:
 
 ```python
-# Use HuggingFace free tier
-MODEL_NAME = "microsoft/DialoGPT-medium"
+# Use OpenAI (requires API key)
+MODEL_PROVIDER="openai" python -m src.main
 
-# Use local Ollama (if installed)
-MODEL_NAME = "gemma:2b"
+# Use local Ollama (free, runs locally)
+MODEL_PROVIDER="ollama" python -m src.main
+
+# Auto-detect (default)
+python -m src.main
 ```
+
+#### Setting up Ollama (Free Local Models)
+
+1. **Install Ollama**:
+   ```bash
+   # macOS
+   brew install ollama
+   
+   # Linux
+   curl -fsSL https://ollama.com/install.sh | sh
+   
+   # Windows: Download from https://ollama.com/
+   ```
+
+2. **Start Ollama service**:
+   ```bash
+   ollama serve
+   ```
+
+3. **Pull a model** (choose based on your system):
+   ```bash
+    # Lightweight models (good for testing)
+    ollama pull llama3.2:1b      # 1.3GB")
+    ollama pull llama3.2:3b      # 2.0GB")
+    
+    # More capable models
+    ollama pull llama3.1:8b      # 4.7GB")
+    ollama pull llama3.1:70b     # 40GB (requires 64GB+ RAM)")
+    ollama pull qwen2.5:7b       # 4.4GB")
+    
+    # Specialized models
+    ollama pull codellama:7b     # 3.8GB (for code)")
+    ollama pull mistral:7b       # 4.1GB (general purpose)")
+   ```
+
+4. **Use with analysis**:
+   ```bash
+   export OLLAMA_MODEL=llama3.2:3b  # Optional: specify model
+   MODEL_PROVIDER=ollama python -m src.main
+   ```
 
 ### Risk Thresholds
 
