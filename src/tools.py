@@ -4,7 +4,7 @@ import requests
 import json
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from langchain.tools import tool
 from textblob import TextBlob
 import warnings
@@ -353,3 +353,56 @@ def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[st
         {"date": cutoff, "headline": f"{ticker} faces regulatory query", "sentiment": "negative"},
     ]
     return str(samples)
+
+
+@tool
+def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
+    """
+    Query 10-K/10-Q documents using RAG to find specific information.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        query: Single query string to search for in the documents, which gets converted to list.
+        
+    Returns:
+        Returns list of results corresponding to each query
+        
+    Example:
+        # Multiple queries
+        results = query_10k_documents("AAPL", [
+            "What are the key financial metrics?",
+            "What are the main business segments?",
+            "What are the primary risk factors?"
+        ])
+    """
+    try:
+        from .rag_utils import FundamentalRAG
+        import ast
+        
+        # Initialize RAG system
+        rag_system = FundamentalRAG()
+        
+        # Handle string representation of list (common when passed from agent tools)
+        if isinstance(query, str) and query.strip().startswith('[') and query.strip().endswith(']'):
+            # Try to parse string as list
+            query = ast.literal_eval(query)
+            print(f"Parsed string list into actual list: {query}")
+    
+            # Multiple queries - return list of results
+            results = []
+            for q in query:
+                chunks = rag_system.retrieve_relevant_chunks(ticker, q)
+                if chunks:
+                    # Format chunks into readable text
+                    result = "\n---DOCUMENT SECTION---\n".join([
+                        chunk.page_content for chunk in chunks
+                    ])
+                    results.append(f"Retrieved relevant info for {ticker}'s 10K/10Q filing:{q}:\n\n {result}")
+                else:
+                    results.append(f"No relevant information found for query: {q}")
+            return results
+        else:
+            return "Error: Query must be a string that starts with [ and ends with ]"
+            
+    except Exception as e:
+        return f"Error querying documents: {str(e)}"

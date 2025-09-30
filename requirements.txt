@@ -9,6 +9,14 @@ pydantic
 requests
 textblob
 
+# RAG Dependencies
+langchain-chroma
+langchain-text-splitters
+pypdf
+sec-api
+beautifulsoup4
+lxml
+
 # LLM Providers (install as needed)
 # For OpenAI GPT models:
 langchain-openai
