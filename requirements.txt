@@ -35,3 +35,4 @@ langchain-openai
 
 # For local Ollama models:
 ollama
+langchain_ollama
