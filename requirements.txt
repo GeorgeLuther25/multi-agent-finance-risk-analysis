@@ -6,7 +6,13 @@ numpy
 yfinance
 python-dateutil
 pydantic
+streamlit
+openai
+plotly
 requests
+beautifulsoup4
+matplotlib
+seaborn
 textblob
 
 # RAG Dependencies
