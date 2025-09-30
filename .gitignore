@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.env
+.venv/
+
+# Node
+node_modules/
+frontend/node_modules/
+*.log
+.env.local
+
+# MacOS
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+\.pytest_cache/
+
+# VSCode
+.vscode/
