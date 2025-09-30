@@ -1,13 +1,26 @@
-# env/secrets
-.env
-*.env
-.venv
-
-# venv / caches
-.venv/
-__pycache__/
-*.py[cod]
+# General
 .DS_Store
+.env
+.env.*
+*.log
+
+# Node
+node_modules/
+**/node_modules/
+.npm/
+yarn.lock
+.pnpm-store/
+.vite/
+.next/
+build/
+dist/
+.cache/
+**/.cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
 
 # IDE
 .vscode/
