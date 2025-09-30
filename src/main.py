@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableConfig
 # os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 # os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 
-from .agents import State, data_agent, risk_agent, sentiment_agent, valuation_agent, writer_agent
+from agents import State, data_agent, risk_agent, sentiment_agent, valuation_agent, writer_agent
 # from .agents import State, data_agent, risk_agent, writer_agent
 
 def build_graph():

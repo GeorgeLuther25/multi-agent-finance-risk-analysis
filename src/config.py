@@ -24,6 +24,12 @@ try:
 except ImportError:
     Ollama = None
 
+# Prefer chat interface for Ollama when using message-based prompts
+try:
+    from langchain_community.chat_models import ChatOllama
+except ImportError:
+    ChatOllama = None
+
 def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
     """
     Get an actual LLM instance based on available API keys and preferences.
@@ -65,6 +71,26 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
                 temperature=temperature,
                 max_output_tokens=1000
             )
+
+        # Local Qwen (via Ollama)
+        elif (ChatOllama or Ollama):
+            try:
+                if ChatOllama:
+                    print("🤖 Using local Qwen (chat) via Ollama")
+                    return ChatOllama(
+                        model="qwen:4b",
+                        temperature=temperature,
+                        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                    )
+                # Fallback to completion interface
+                print("🤖 Using local Qwen (completion) via Ollama")
+                return Ollama(
+                    model="qwen:4b",
+                    temperature=temperature,
+                    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                )
+            except Exception as e:
+                print("⚠️ Exception occurred using Qwen:", e)
         
         # # Check for local Ollama installation
         # elif Ollama:

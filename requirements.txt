@@ -8,6 +8,8 @@ python-dateutil
 pydantic
 requests
 textblob
+flask
+flask-cors
 
 # LLM Providers (install as needed)
 # For OpenAI GPT models:
