@@ -71,7 +71,7 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
         print("   Set it with: export POLYGON_API_KEY='your-key-here'")
         # Fallback to synthetic news
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return str(_generate_synthetic_news(ticker, cutoff_date))
+        return _generate_synthetic_news(ticker, cutoff_date)
     
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days)
@@ -90,7 +90,7 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
     except Exception as e:
         print(f"❌ Error fetching news for {ticker}: {e}")
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return str(_generate_synthetic_news(ticker, cutoff_date))
+        return _generate_synthetic_news(ticker, cutoff_date)
 
 
 def _extract_url_content(url: str, max_length: int = 4000) -> str:
@@ -349,8 +349,18 @@ def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[st
     """Stub news. Replace with your provider later."""
     cutoff = cutoff_date.strftime("%Y-%m-%d")
     samples = [
-        {"date": cutoff, "headline": f"{ticker} announces product update", "sentiment": "positive"},
-        {"date": cutoff, "headline": f"{ticker} faces regulatory query", "sentiment": "negative"},
+        {
+            "date": cutoff, 
+            "headline": f"{ticker} announces product update", 
+            "sentiment": "positive",
+            "content": f"{ticker} has announced a significant product update that could positively impact their market position and revenue growth."
+        },
+        {
+            "date": cutoff, 
+            "headline": f"{ticker} faces regulatory query", 
+            "sentiment": "negative",
+            "content": f"{ticker} is currently facing regulatory inquiries that may impact their business operations and investor confidence."
+        },
     ]
     return str(samples)
 

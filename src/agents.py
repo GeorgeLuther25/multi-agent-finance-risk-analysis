@@ -123,11 +123,16 @@ def data_agent(state: State, config: RunnableConfig):
     news_raw = get_recent_news.invoke({"ticker": state.ticker, "days": min(14, state.horizon_days)})
     items = []
     try:
-        for r in ast.literal_eval(news_raw):
-            # print("News is:", r["content"])
+        # Handle both string and list returns from get_recent_news
+        if isinstance(news_raw, str):
+            news_data = ast.literal_eval(news_raw)
+        else:
+            news_data = news_raw
+            
+        for r in news_data:
             items.append(NewsItem(date=str(r["date"]), headline=str(r["headline"]), sentiment=str(r["sentiment"]), content=str(r["content"])))
     except Exception as e:
-        print(f"Exception occured:{e}")
+        print(f"Exception occurred: {e}")
     
     # Create new state with updated data
     new_state = State(

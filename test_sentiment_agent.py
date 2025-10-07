@@ -3,8 +3,12 @@
 Test script to demonstrate the sentiment agent functionality.
 """
 
-from src.main import build_graph
-from src.agents import State
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from main import build_graph
+from agents import State
 from langchain_core.runnables import RunnableConfig
 
 def test_sentiment_agent():
