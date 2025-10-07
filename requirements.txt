@@ -1,0 +1,25 @@
+langchain
+langgraph
+langchain_community
+pandas
+numpy
+yfinance
+python-dateutil
+pydantic
+requests
+textblob
+flask
+flask-cors
+
+# LLM Providers (install as needed)
+# For OpenAI GPT models:
+langchain-openai
+
+# For Anthropic Claude models:
+# langchain-anthropic
+
+# For Google Gemini models:
+# langchain-google-genai
+
+# For local Ollama models:
+ollama
