@@ -6,10 +6,24 @@ numpy
 yfinance
 python-dateutil
 pydantic
+streamlit
+openai
+plotly
 requests
+beautifulsoup4
+matplotlib
+seaborn
 textblob
 flask
 flask-cors
+
+# RAG Dependencies
+langchain-chroma
+langchain-text-splitters
+pypdf
+sec-api
+beautifulsoup4
+lxml
 
 # LLM Providers (install as needed)
 # For OpenAI GPT models:
@@ -23,3 +37,4 @@ langchain-openai
 
 # For local Ollama models:
 ollama
+langchain_ollama
