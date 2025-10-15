@@ -4,7 +4,7 @@ import pandas as pd
 from io import StringIO
 from datetime import datetime
 from typing import Optional
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
@@ -12,7 +12,7 @@ from .config import get_llm
 from .tools import get_price_history, get_recent_news, query_10k_documents
 from .schemas import (
     MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport,
-    SentimentSummary, ValuationMetrics, FundamentalAnalysis
+    SentimentSummary, ValuationMetrics, FundamentalAnalysis, DebateReport
 )
 from .rag_utils import initialize_sample_data, FundamentalRAG, batch_ingest_documents
 from langchain.tools import Tool
@@ -23,9 +23,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # LangSmith visibility
-import os
-os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
+# import os
+# os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+# os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 
 DATA_SYSTEM = "You are the Data Agent. Fetch prices (CSV) and recent news (list). Return raw data only."
 RISK_SYSTEM = "You are the Risk Agent. Compute annualized vol, max drawdown, 1D 95% VaR (Gaussian), and a naive Sharpe-like. Add risk flags."
@@ -115,6 +115,7 @@ class State(BaseModel):
     fundamental: Optional[FundamentalAnalysis] = None
     metrics: Optional[RiskMetrics] = None
     report: Optional[RiskReport] = None
+    debate: Optional[DebateReport] = None
 
 def data_agent(state: State, config: RunnableConfig):
     # llm = get_llm()
@@ -864,4 +865,309 @@ Comprehensive risk, valuation, sentiment, and fundamental analysis for {state.ti
         metrics=state.metrics,
         report=report
     )
+    return new_state
+
+# Debate
+def debate_manager(state: State):
+    """Debate Manager control debates"""
+    llm = get_llm(temperature=0.5)
+    new_state = state.model_copy()
+
+    DEBATE_MANAGER_SYSTEM = """
+                            You are the Debate Manager coordinating three agents: Fundamental, Sentiment, and Valuation.
+                            Your task:
+                            - Carefully read the specialized agents arguments.
+                            - Analyze agreements, disagreements, and the overall tone.
+                            - Identify key evidence and logic from each.
+                            - Synthesize these viewpoints into **one concise, reasoned conclusion**.
+                            - The conclusion must be objective, actionable, and justified.
+
+                            Your output is final conclusion and must follow this concern:
+                            - Highlight points of agreement or conflict.
+                            - Note which arguments are stronger or better supported.
+                            - Provide a single, coherent conclusion that integrates all perspectives.
+                            - If uncertainty remains, explain it clearly.
+                            - Be balanced, analytical, and clear about judgement to invest in the stock.
+
+                            Output format:
+                            - Output is consise summary
+                            - Based on your summary, give a recommendation to 'buy', 'hold', or 'sell'.
+                            """
+    # - If the conclusion is not converged, output 'Output: Sentiment' or 'Output: Fundamental' to continue the debate.
+    # - If the conclusion is converged, output with format 'Output: Accepted' to end the debate.
+    
+    # Initialize debate
+    if new_state.debate.agent_turn_count is None:
+        new_state.debate.agent_turn_count = {agent:0 for agent in new_state.debate.agent_list}
+
+    counts = new_state.debate.agent_turn_count.values()
+    counts_list = list(counts)
+
+    if len(set(counts_list)) == 1 and all(c > 0 for c in counts_list):
+        print(f'Debate Manager turn-{next(iter(counts))-1}')
+        messages = [SystemMessage(content=DEBATE_MANAGER_SYSTEM),]
+
+        if new_state.debate.consensus_summary != "":
+            for agent in list(new_state.debate.agent_list): #in ["fundamental", "sentiment"]:
+                latest = state.debate.agent_arguments[agent][-2] if state.debate.agent_arguments[agent] else None
+                if latest is not None:
+                    messages.append(HumanMessage(content=f"This is based on {agent.title()} Agent arguments: \"\"{latest}\"\""))
+                    # print(f"\n\n{agent.title()} latest: {latest}")
+            
+            messages.append(AIMessage(content=f"Consensus summary: \"{state.debate.consensus_summary}\""))
+        
+        for agent in list(new_state.debate.agent_list): #["fundamental", "sentiment"]:
+            latest = state.debate.agent_arguments[agent][-1] if state.debate.agent_arguments[agent] else None
+            if latest is not None:
+                messages.append(HumanMessage(content=f"This is based on {agent.title()} Agent arguments: \"\"{latest}\"\""))
+                # print(f"\n\n{agent.title()} latest: {latest}")
+
+        response = llm.invoke(messages)
+    
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+        new_state.debate.consensus_summary = response_text
+        # print(f"manager conclusions: {response_text}")
+
+        if all(c > 1 for c in counts_list):
+            messages.append(AIMessage(content=response_text))
+            messages.append(HumanMessage(content="""Based on your two latest Consensus, do this action:
+                                                - Compare both of your Consensus, and get the final reccomendation
+                                                - Say in this format 'First: {your first reccomendation}, Second: {your second reccomendation}, Action: {DEBATE or END}'
+                                                - If your two Consensus have different reccomendation, just fill Action with 'DEBATE', else than that say 'END'.
+                                                    """))
+            response = llm.invoke(messages)
+            response_text = response.content if hasattr(response, 'content') else str(response)
+            new_state.debate.terminated = 'END' if response_text.__contains__("END") else ''
+    
+    #- If you only have one consensus summary, output 'Output: Sentiment' or 'Output: Fundamental' to clarify.
+    # - If you have done two concusion before, and your conclusion for positions either 'buy','hold', or 'sell' is changed from your previous conclusion, output 'Output: Sentiment' or 'Output: Fundamental' to continue the debate.
+    # - If you have done concusion before, and your conclusion for positions either 'buy','hold', or 'sell' is not changed from your previous conclusion, output with format 'Output: Accepted' to end the debate.
+    # print(new_state.debate.agent_turn_count)
+
+    if all(v == new_state.debate.agent_max_turn for v in new_state.debate.agent_turn_count.values()):
+        # print("ARGS:", new_state.debate.agent_arguments)
+        new_state.debate.terminated = "ENDMAX"
+
+    if new_state.debate.terminated == "END" or new_state.debate.terminated == "ENDMAX":
+        messages = [SystemMessage(content=DEBATE_MANAGER_SYSTEM),]
+        messages.append(HumanMessage(content=f"""
+                                        Based on this Final Consensus, polished a final summary for put as a report.
+                                        1. Make it concise and clear.
+                                        2. Don't mention about the debate process.
+                                        3. Make sure to include a final recommendation to 'buy', 'hold', or 'sell'.
+                                        4. Output only the final summary.
+
+                                        Final Consensus:
+                                        "{new_state.debate.consensus_summary}"
+                                     """))
+        response = llm.invoke(messages)
+        response_text = response.content if hasattr(response, 'content') else str(response)
+        new_state.debate.consensus_summary = response_text
+        print(f"Final Consensus Summary:\n{new_state.debate.consensus_summary}")
+
+    return new_state
+
+def route_debate(state: State):
+    if len(set(state.debate.agent_turn_count.values())) == 1:
+        print(f"\n\nDebate routing turn:{min(state.debate.agent_turn_count.values())} ============================")
+    if state.debate.terminated == "ENDMAX" or state.debate.terminated == "END":
+        return "END"
+    elif min(state.debate.agent_turn_count, key=state.debate.agent_turn_count.get) == "fundamental":
+        return "Fundamental"
+    elif min(state.debate.agent_turn_count, key=state.debate.agent_turn_count.get) == "sentiment":
+        return "Sentiment"
+    elif min(state.debate.agent_turn_count, key=state.debate.agent_turn_count.get) == "valuation":
+        return "Valuation"
+
+def debate_fundamental_agent(state: State):
+    current_agent = 'fundamental'
+    llm = get_llm(temperature=0.5)
+    new_state = state.model_copy()
+    idx = new_state.debate.agent_turn_count[current_agent]
+    print(f'{current_agent} turn-{idx}')
+
+    DEBATE_SYSTEM = f"""
+                        You are the Fundamental Analysis Agent.
+
+                        Specialization:
+                        Focus on financial performance, balance sheet strength, profitability, debt, valuation, and long-term business potential.
+
+                        Report:
+                        \"\"\"{state.fundamental.executive_summary}\"\"\"
+
+                        """
+    
+    if new_state.debate.agent_turn_count[current_agent] == 0:
+        # First Analysis
+        initial_analysis_prompt = f"""
+                                    Task:
+                                    - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                                    - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
+                                        """
+        # DEBATE_SYSTEM += "\n Output a concise summary emphasizing key fundamental insights."
+        messages = [SystemMessage(content=DEBATE_SYSTEM),
+                    HumanMessage(content=initial_analysis_prompt)
+                    ]
+        response = llm.invoke(messages)
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+    else:
+        # Debate
+        DEBATE_SYSTEM += f"""You will given other Agents judgements, then:
+                            - Challenge the judgement from your specialization, don't put heading for this section.\n
+                            - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                            - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
+                            - If the other Agent provides strong evidence that challenges your recommendation, you may revise your recommendation accordingly.
+                         """
+        
+        messages = [SystemMessage(content=DEBATE_SYSTEM)]
+        for agent in list(new_state.debate.agent_list): #["fundamental", "sentiment"]:
+            latest = state.debate.agent_arguments[agent][-1] if state.debate.agent_arguments[agent] else None
+            if latest is not None:
+                if agent != current_agent:
+                    messages.append(HumanMessage(content=f"This is judgement based on {agent.title()} Agent for your considerations: \"{latest}\""))
+                # print(f"\n\n{agent.title()} latest: {latest}")
+
+        # print(messages)
+        response = llm.invoke(messages)
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+
+    new_state.debate.agent_arguments[current_agent].append(response_text)
+    new_state.debate.agent_turn_count[current_agent] += 1
+    # print(f"result: {response_text}")
+    return new_state
+
+def debate_sentiment_agent(state: State):
+    current_agent = 'sentiment'
+    llm = get_llm(temperature=0.6)
+    new_state = state.model_copy()
+    idx = new_state.debate.agent_turn_count[current_agent]
+    print(f'{current_agent} turn-{idx}')
+
+    DEBATE_SYSTEM = f"""
+                        You are the Sentiment Analysis Agent.
+
+                        Specialization:
+                        Analyze the tone, emotional language, and implied investor sentiment in a report.
+                        Identify whether the sentiment is optimistic, neutral, or negative, and explain why.
+
+                        Report:
+                        \"\"\"{state.sentiment.summary}\"\"\"
+
+                        """
+    
+    if new_state.debate.agent_turn_count[current_agent] == 0:
+        # First Analysis
+        # initial_analysis_prompt = f"""
+        #                             Summarize the overall sentiment:
+        #                             - Describe the tone (positive, neutral, or negative)
+        #                             - Mention emotional or linguistic indicators of this tone
+        #                             - Explain how investors might feel after reading it
+        #                                 """
+        initial_analysis_prompt = f"""
+                                    Task:
+                                    - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                                    - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
+                                  """
+        # DEBATE_SYSTEM += "\n Output a concise summary emphasizing key fundamental insights."
+        messages = [SystemMessage(content=DEBATE_SYSTEM),
+                    HumanMessage(content=initial_analysis_prompt)
+                    ]
+        response = llm.invoke(messages)
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+    else:
+        # Debate
+        DEBATE_SYSTEM += f"""You will given other agents judgements, then:
+                            - Challenge the judgement from your specialization, don't put heading for this section..\n
+                            - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                            - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
+                            - If the other agent provides strong evidence that challenges your recommendation, you may revise your recommendation accordingly.
+                         """
+        
+        messages = [SystemMessage(content=DEBATE_SYSTEM)]
+        for agent in list(new_state.debate.agent_list): #["fundamental", "sentiment"]:
+            latest = state.debate.agent_arguments[agent][-1] if state.debate.agent_arguments[agent] else None
+            if latest is not None:
+                if agent != current_agent:
+                    messages.append(HumanMessage(content=f"This is judgement based on {agent.title()} Agent for your considerations: \"{latest}\""))
+                # print(f"\n\n{agent.title()} latest: {latest}")
+    
+        # print(messages)
+        response = llm.invoke(messages)
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+
+    new_state.debate.agent_arguments[current_agent].append(response_text)
+    new_state.debate.agent_turn_count[current_agent] += 1
+    # print(f"result: {response_text}")
+    return new_state
+
+def debate_valuation_agent(state: State):
+    current_agent = 'valuation'
+    llm = get_llm(temperature=0.5)
+    new_state = state.model_copy()
+    idx = new_state.debate.agent_turn_count[current_agent]
+    print(f'{current_agent} turn-{idx}')
+
+    DEBATE_SYSTEM = f"""
+                        You are the Valuation Analysis Agent.
+
+                        Specialization:
+                        Analyze the valuation trends of a given asset or portfolio over an extended time horizon. 
+                        To complete the task, you must analyze the historical valuation data of the asset or portfolio provided, identify trends and patterns in valuation metrics over time, and interpret the implications of these trends for investors or stakeholders.
+
+                        Focus your analysis on:
+                        1. Price trend analysis (upward, downward, sideways movement)
+                        2. Volatility regime assessment (low, medium, high volatility periods)
+                        3. Risk-return profile evaluation
+                        4. Investment implications and outlook
+                        5. Key patterns and inflection points in the data
+
+                        Report:
+                        \"\"\"{state.valuation.trend_analysis}\"\"\"
+
+                        """
+    
+    if new_state.debate.agent_turn_count[current_agent] == 0:
+        # First Analysis
+        initial_analysis_prompt = f"""
+                                    Task:
+                                    - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                                    - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
+                                        """
+        # DEBATE_SYSTEM += "\n Output a concise summary emphasizing key fundamental insights."
+        messages = [SystemMessage(content=DEBATE_SYSTEM),
+                    HumanMessage(content=initial_analysis_prompt)
+                    ]
+        response = llm.invoke(messages)
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+    else:
+        # Debate
+        DEBATE_SYSTEM += f"""You will given other Agents judgements, then:
+                            - Challenge the judgement from your specialization, don't put heading for this section.\n
+                            - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                            - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
+                            - If the other Agent provides strong evidence that challenges your recommendation, you may revise your recommendation accordingly.
+                         """
+        
+        messages = [SystemMessage(content=DEBATE_SYSTEM)]
+        for agent in list(new_state.debate.agent_list): #["fundamental", "sentiment"]:
+            latest = state.debate.agent_arguments[agent][-1] if state.debate.agent_arguments[agent] else None
+            if latest is not None:
+                if agent != current_agent:
+                    messages.append(HumanMessage(content=f"This is judgement based on {agent.title()} Agent for your considerations: \"{latest}\""))
+                # print(f"\n\n{agent.title()} latest: {latest}")
+
+        # print(messages)
+        response = llm.invoke(messages)
+        # Parse the LLM response to extract structured information
+        response_text = response.content if hasattr(response, 'content') else str(response)
+
+    new_state.debate.agent_arguments[current_agent].append(response_text)
+    new_state.debate.agent_turn_count[current_agent] += 1
+    # print(f"result: {response_text}")
     return new_state
