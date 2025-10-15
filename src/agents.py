@@ -809,6 +809,8 @@ Comprehensive risk, valuation, sentiment, and fundamental analysis for {state.ti
 - Valuation metrics: R_annualized = ((1 + R_cumulative)^(252/n)) - 1, σ_annualized = σ_daily × √252
 - Sentiment analysis uses LLM-based reflection-enhanced summarization
 - Fundamental analysis uses RAG-enhanced 10-K/10-Q document analysis
+
+{"## Investment Final Recommendation\n" + state.debate.consensus_summary if state.debate.consensus_summary != "" else ""}
 """
     # _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
     
@@ -954,13 +956,13 @@ def debate_manager(state: State):
         messages.append(HumanMessage(content=f"""
                                         Based on this Final Consensus, polished a final summary for put as a report.
                                         1. Make it concise and clear.
-                                        2. Don't mention about the debate process.
-                                        3. Make sure to include a final recommendation to 'buy', 'hold', or 'sell'.
-                                        4. Output only the final summary.
+                                        2. Do not mention about the agents or debate process.
+                                        3. Output ONLY the polished final summary without heading.
 
                                         Final Consensus:
                                         "{new_state.debate.consensus_summary}"
                                      """))
+        llm.temperature = 0.4
         response = llm.invoke(messages)
         response_text = response.content if hasattr(response, 'content') else str(response)
         new_state.debate.consensus_summary = response_text

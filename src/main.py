@@ -45,6 +45,7 @@ def build_debate_graph():
     g.add_node("debate_fundamental", debate_fundamental_agent)
     g.add_node("debate_sentiment", debate_sentiment_agent)
     g.add_node("debate_valuation", debate_valuation_agent)
+    g.add_node("writer", writer_agent)
     g.set_entry_point("debate_manager")
 
     g.add_edge("debate_fundamental", "debate_manager")
@@ -55,12 +56,13 @@ def build_debate_graph():
         "debate_manager",
         route_debate,
         { 
-            "END": END,
+            "END": "writer",
             "Fundamental":"debate_fundamental",
             "Sentiment":"debate_sentiment",
             "Valuation":"debate_valuation"
         },
     )
+    g.add_edge("writer", END)
     
     return g.compile()
 
@@ -92,17 +94,6 @@ if __name__ == "__main__":
         #     print("Sentiment available:", final_state.sentiment is not None)
         print(final_state['report'].markdown_report)
 
-        # if os.path.exists("output.pdf"):
-        #     contents = 
-        pdf.add_section(Section(final_state['report'].markdown_report))
-        pdf.save("output.pdf")
-
-        # Save to JSON file
-        final_state_dict = final_state 
-        state_obj = State(**final_state_dict)
-        with open("final_state.json", "w") as f:
-                f.write(state_obj.model_dump_json(indent=2))
-
     with open("final_state.json", "r") as f:
         final_state = State.model_validate_json(f.read())
 
@@ -114,6 +105,17 @@ if __name__ == "__main__":
             f.write(debateGraph.get_graph().draw_mermaid_png())
         final_state = debateGraph.invoke(final_state, config=RunnableConfig(), verbose=True)
         print('Debate Terminated: ',final_state['debate'].terminated)
+
+        # if os.path.exists("output.pdf"):
+        #     contents = 
+        pdf.add_section(Section(final_state['report'].markdown_report))
+        pdf.save(f"AnalysisReport_{final_state['ticker']}.pdf")
+
+        # Save to JSON file
+        final_state_dict = final_state 
+        state_obj = State(**final_state_dict)
+        with open("final_state.json", "w") as f:
+                f.write(state_obj.model_dump_json(indent=2))
 
     # debateGraph = build_debate_graph(final_state)
     # final_state = debateGraph.invoke(final_state, config=RunnableConfig(), verbose=True)
