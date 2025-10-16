@@ -1,6 +1,7 @@
 from typing import List, Literal, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
+from collections import defaultdict
 
 
 class MarketData(BaseModel):
@@ -87,3 +88,14 @@ class FundamentalAnalysis(BaseModel):
     investment_thesis: str
     concerns_and_risks: List[str]
     methodology: str = "RAG-enhanced 10-K/10-Q document analysis"
+
+# Debate
+class DebateReport(BaseModel):
+    agent_list: List[str] = []
+    agent_max_turn: int = 3
+    agent_turn_count : Dict[str, int] = None
+    agent_arguments: Dict[str, List[str]] = defaultdict(list)  # key: agent name, value: list of arguments made
+    preliminary_report: str = ""
+    consensus_summary: str = ""
+    terminated: str = ""
+    markdown_report: str = ""
