@@ -810,7 +810,7 @@ Comprehensive risk, valuation, sentiment, and fundamental analysis for {state.ti
 - Sentiment analysis uses LLM-based reflection-enhanced summarization
 - Fundamental analysis uses RAG-enhanced 10-K/10-Q document analysis
 
-{"## Investment Final Recommendation\n" + state.debate.consensus_summary if state.debate.consensus_summary != "" else ""}
+{"## Investment Final Recommendation\n" + state.debate.consensus_summary if state.debate else ""}
 """
     # _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
     
@@ -908,15 +908,6 @@ def debate_manager(state: State):
     if len(set(counts_list)) == 1 and all(c > 0 for c in counts_list):
         print(f'Debate Manager turn-{next(iter(counts))-1}')
         messages = [SystemMessage(content=DEBATE_MANAGER_SYSTEM),]
-
-        if new_state.debate.consensus_summary != "":
-            for agent in list(new_state.debate.agent_list): #in ["fundamental", "sentiment"]:
-                latest = state.debate.agent_arguments[agent][-2] if state.debate.agent_arguments[agent] else None
-                if latest is not None:
-                    messages.append(HumanMessage(content=f"This is based on {agent.title()} Agent arguments: \"\"{latest}\"\""))
-                    # print(f"\n\n{agent.title()} latest: {latest}")
-            
-            messages.append(AIMessage(content=f"Consensus summary: \"{state.debate.consensus_summary}\""))
         
         for agent in list(new_state.debate.agent_list): #["fundamental", "sentiment"]:
             latest = state.debate.agent_arguments[agent][-1] if state.debate.agent_arguments[agent] else None
@@ -928,15 +919,18 @@ def debate_manager(state: State):
     
         # Parse the LLM response to extract structured information
         response_text = response.content if hasattr(response, 'content') else str(response)
+        prev_consensus_summary = new_state.debate.consensus_summary
         new_state.debate.consensus_summary = response_text
         # print(f"manager conclusions: {response_text}")
 
         if all(c > 1 for c in counts_list):
-            messages.append(AIMessage(content=response_text))
-            messages.append(HumanMessage(content="""Based on your two latest Consensus, do this action:
-                                                - Compare both of your Consensus, and get the final reccomendation
-                                                - Say in this format 'First: {your first reccomendation}, Second: {your second reccomendation}, Action: {DEBATE or END}'
-                                                - If your two Consensus have different reccomendation, just fill Action with 'DEBATE', else than that say 'END'.
+            messages = [SystemMessage(content=DEBATE_MANAGER_SYSTEM),]
+            messages.append(HumanMessage(content=prev_consensus_summary))
+            messages.append(HumanMessage(content=response_text))
+            messages.append(HumanMessage(content="""Based on both Consensus Summaries, do this action:
+                                                - Compare both Consensus Summaries, and get the final recommendation
+                                                - Say in this format 'First: {your first recommendation}, Second: {your second recommendation}, Action: {DEBATE or END}'
+                                                - If both Consensus Summaries have similar recommendations, just fill Action with 'END', else than that say 'DEBATE'.
                                                     """))
             response = llm.invoke(messages)
             response_text = response.content if hasattr(response, 'content') else str(response)
@@ -947,7 +941,7 @@ def debate_manager(state: State):
     # - If you have done concusion before, and your conclusion for positions either 'buy','hold', or 'sell' is not changed from your previous conclusion, output with format 'Output: Accepted' to end the debate.
     # print(new_state.debate.agent_turn_count)
 
-    if all(v == new_state.debate.agent_max_turn for v in new_state.debate.agent_turn_count.values()):
+    if all(v == new_state.debate.agent_max_turn-1 for v in new_state.debate.agent_turn_count.values()):
         # print("ARGS:", new_state.debate.agent_arguments)
         new_state.debate.terminated = "ENDMAX"
 

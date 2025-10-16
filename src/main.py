@@ -94,6 +94,12 @@ if __name__ == "__main__":
         #     print("Sentiment available:", final_state.sentiment is not None)
         print(final_state['report'].markdown_report)
 
+        # Save to JSON file
+        final_state_dict = final_state 
+        state_obj = State(**final_state_dict)
+        with open("final_state.json", "w") as f:
+                f.write(state_obj.model_dump_json(indent=2))
+
     with open("final_state.json", "r") as f:
         final_state = State.model_validate_json(f.read())
 
@@ -103,18 +109,16 @@ if __name__ == "__main__":
         final_state.debate = debateReport
         with open("graph_debate.png", "wb") as f:
             f.write(debateGraph.get_graph().draw_mermaid_png())
-        final_state = debateGraph.invoke(final_state, config=RunnableConfig(), verbose=True)
+        final_state = debateGraph.invoke(final_state, config=RunnableConfig(recursion_limit=100), verbose=True)
         print('Debate Terminated: ',final_state['debate'].terminated)
 
-        # if os.path.exists("output.pdf"):
-        #     contents = 
         pdf.add_section(Section(final_state['report'].markdown_report))
         pdf.save(f"AnalysisReport_{final_state['ticker']}.pdf")
 
         # Save to JSON file
         final_state_dict = final_state 
         state_obj = State(**final_state_dict)
-        with open("final_state.json", "w") as f:
+        with open("final_state_with_debate.json", "w") as f:
                 f.write(state_obj.model_dump_json(indent=2))
 
     # debateGraph = build_debate_graph(final_state)
