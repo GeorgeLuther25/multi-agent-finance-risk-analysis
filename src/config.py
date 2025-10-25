@@ -42,7 +42,7 @@ try:
 except ImportError:
     OllamaEmbeddings = None
 
-def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
+def get_llm(temperature: float = 0.1, model_provider: str = "auto", max_tokens=2000):
     """
     Get an actual LLM instance based on available API keys and preferences.
     
@@ -70,7 +70,7 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
                 # model="gpt-3.5-turbo",  # Cost-effective option
                 model="gpt-4o",
                 temperature=temperature,
-                max_tokens=1000
+                max_tokens=max_tokens
             )
         
         # Check for Anthropic API key
@@ -79,7 +79,7 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
             return ChatAnthropic(
                 model="claude-3-haiku-20240307",  # Fast and cost-effective
                 temperature=temperature,
-                max_tokens=1000
+                max_tokens=max_tokens
             )
         
         # Check for Google API key
@@ -88,29 +88,9 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
             return ChatGoogleGenerativeAI(
                 model="gemini-pro",
                 temperature=temperature,
-                max_output_tokens=1000
+                max_output_tokens=max_tokens
             )
 
-        # Local Qwen (via Ollama)
-        elif (ChatOllama or Ollama):
-            try:
-                if ChatOllama:
-                    print("🤖 Using local Qwen (chat) via Ollama")
-                    return ChatOllama(
-                        model="qwen:4b",
-                        temperature=temperature,
-                        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-                    )
-                # Fallback to completion interface
-                print("🤖 Using local Qwen (completion) via Ollama")
-                return Ollama(
-                    model="qwen:4b",
-                    temperature=temperature,
-                    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-                )
-            except Exception as e:
-                print("⚠️ Exception occurred using Qwen:", e)
-        
         # Check for local Ollama installation
         elif ChatOllama:
             try:
@@ -120,7 +100,8 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
                 llm = ChatOllama(
                     model=ollama_model,
                     temperature=temperature,
-                    base_url="http://localhost:11434"  # Default Ollama URL
+                    num_predict=max_tokens,
+                    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
                 )
                 # Test the connection by trying a simple generation
                 # llm.invoke("test")
@@ -137,7 +118,7 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
         return ChatOpenAI(
             model="gpt-4o-mini",  # Latest cost-effective model
             temperature=temperature,
-            max_tokens=1000
+            max_tokens=max_tokens
         )
     
     elif model_provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY") and ChatAnthropic:
@@ -145,7 +126,7 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
         return ChatAnthropic(
             model="claude-3-haiku-20240307",
             temperature=temperature,
-            max_tokens=1000
+            max_tokens=max_tokens
         )
     
     elif model_provider == "google" and os.getenv("GOOGLE_API_KEY") and ChatGoogleGenerativeAI:
@@ -153,7 +134,7 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
         return ChatGoogleGenerativeAI(
             model="gemini-pro",
             temperature=temperature,
-            max_output_tokens=1000
+            max_output_tokens=max_tokens
         )
     
     elif model_provider == "ollama" and ChatOllama:
@@ -164,6 +145,7 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
             llm = ChatOllama(
                 model=ollama_model,
                 temperature=temperature,
+                num_predict=max_tokens,
                 base_url="http://localhost:11434"
             )
             # Test the connection by trying a simple generation

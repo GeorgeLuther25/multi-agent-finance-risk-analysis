@@ -37,7 +37,7 @@ class RiskMetrics(BaseModel):
 class SentimentSummary(BaseModel):
     ticker: str
     news_items_analyzed: int
-    overall_sentiment: Literal["bullish", "bearish", "neutral"]
+    overall_sentiment: str
     confidence_score: float = Field(ge=0.0, le=1.0)
     summary: str
     investment_recommendation: str

@@ -47,53 +47,6 @@ The system processes analysis through these specialized agents:
 5. **Risk Agent** → Calculates risk metrics and flags
 6. **Writer Agent** → Generates comprehensive markdown report
 
-## 📚 Additional Documentation
-
-- **LangSmith Traces**: Monitor agent execution at [smith.langchain.com](https://smith.langchain.com/)
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-#### Fundamental Agent Issues
-- **"OpenAI API key not set"**: Ensure `OPENAI_API_KEY` is set in your environment
-- **"ChromaDB errors"**: Delete `./data/chroma_db/` and reinitialize with sample data
-- **"Agent timeout"**: Increase `max_iterations` in the fundamental agent configuration
-
-#### General Issues
-- **Import errors**: Ensure virtual environment is activated and dependencies are installed
-- **No news data**: Check `POLYGON_API_KEY` is set and valid
-- **LangSmith not working**: Verify `LANGCHAIN_API_KEY` and `LANGCHAIN_TRACING_V2=true`
-
-### Environment Variables Checklist
-```bash
-# Required for basic functionality (choose one)
-export OPENAI_API_KEY="your-openai-key"    # For OpenAI models
-# OR use local Ollama (no API key needed)
-export MODEL_PROVIDER="ollama"             # Force Ollama usage
-export OLLAMA_MODEL="llama3.2:3b"         # Optional: specify model
-
-# Required for market data
-export POLYGON_API_KEY="your-polygon-key"
-
-# Optional for LangSmith tracing
-export LANGCHAIN_API_KEY="ls_your-langsmith-key"
-export LANGCHAIN_TRACING_V2="true"
-export LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add your enhancements
-4. Test with sample data
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details., technical analysis, and risk assessment.
-
 ## 🌟 Key Features
 
 - **Multi-Agent Architecture**: Specialized agents for different analysis types
@@ -155,145 +108,7 @@ python -m pip install -U pip
 python -m pip install -r requirements.txt
 ```
 
-## 🔑 LangSmith Setup (Optional but Recommended)
-
-### Step 1: Get LangSmith API Key
-
-1. Go to [https://smith.langchain.com/](https://smith.langchain.com/)
-2. Sign up/Login with your account
-3. Navigate to **Settings** → **API Keys**
-4. Create a new API key
-5. Copy the key (starts with `ls_`)
-
-### Step 2: Configure Environment Variables
-
-#### Option A: Export in Terminal (Temporary)
-
-```bash
-export LANGCHAIN_API_KEY="ls_your_api_key_here"
-export LANGCHAIN_TRACING_V2="true"
-export LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
-
-export OPENAI_API_KEY=ls_your_api_key_here
-# OR use local Ollama (no API key needed)
-export MODEL_PROVIDER="ollama"             # Force Ollama usage
-export OLLAMA_MODEL="llama3.2:3b"         # Optional: specify 
-export POLYGON_API_KEY=ls_your_api_key_here
-```
-
-#### Option B: Create .env File (Recommended)
-
-Create a `.env` file in your project root:
-
-```bash
-# .env
-LANGCHAIN_API_KEY=ls_your_api_key_here
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
-
-OPENAI_API_KEY=ls_your_api_key_here
-# OR use local Ollama (no API key needed)
-OLLAMA_MODEL="llama3.2:3b"
-
-POLYGON_API_KEY=ls_your_api_key_here
-```
-
-Then load it before running:
-
-```bash
-source .env
-```
-
-<!-- #### Option C: Set in main.py (Code-based)
-
-Edit `src/main.py` and ensure these lines are uncommented:
-
-```python
-# LangSmith configuration
-os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
-``` -->
-
-## �� Running the System
-
-### Basic Run
-
-```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Run the multi-agent system
-python -m src.main
-```
-
-### With LangSmith Enabled
-
-```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Set API key (if using export method)
-export LANGCHAIN_API_KEY="ls_your_api_key_here"
-
-# Run with tracing enabled
-python -m src.main
-```
-
-### Custom Parameters
-
-Edit `src/main.py` to change default parameters:
-
-```python
-# Change ticker, period, or horizon
-state = State(
-    ticker="MSFT",        # Change stock symbol
-    period="6mo",         # Change time period (1y, 6mo, 2y)
-    interval="1d",        # Change interval (1d, 1h, 1wk)
-    horizon_days=60       # Change risk horizon
-)
-```
-
-## 📊 What You'll See
-
-### Console Output
-
-The system will display:
-- **News Retrieval**: Real-time news fetching with URL content extraction
-- **Fundamental Analysis**: RAG-powered analysis of 10-K/10-Q SEC filings with comprehensive insights
-- **Valuation Analysis**: Computational metrics (annualized returns, volatility using 252-day formula)
-- **Sentiment Analysis**: Reflection-enhanced prompting with confidence scores
-- **Risk Metrics**: Traditional financial risk calculations and flags
-- **Debug Information**: Data processing steps and agent workflow
-- **Final Report**: Complete Markdown risk analysis with all sections
-- **Final State**: Complete state object with all agent outputs
-
-### LangSmith Platform (if enabled)
-
-Visit [https://smith.langchain.com/](https://smith.langchain.com/) to see:
-- **Project Dashboard**: "Multi-Agent Finance Bot"
-- **Execution Traces**: Complete workflow runs
-- **Agent Performance**: Timing and success rates
-- **Data Flow**: Input/output between agents
-- **Debugging**: Detailed execution logs
-
-## 🔧 Configuration Options
-
-### LLM Configuration
-
-Edit `src/config.py` to change the language model:
-
-```python
-# Use OpenAI (requires API key)
-MODEL_PROVIDER="openai" python -m src.main
-
-# Use local Ollama (free, runs locally)
-MODEL_PROVIDER="ollama" python -m src.main
-
-# Auto-detect (default)
-python -m src.main
-```
-
-#### Setting up Ollama (Free Local Models)
+### 4. Setting up Ollama (Free Local Models)
 
 1. **Install Ollama**:
    ```bash
@@ -333,15 +148,97 @@ python -m src.main
    MODEL_PROVIDER=ollama python -m src.main
    ```
 
-### Risk Thresholds
+## 🔑 LangSmith & Environment variables Setup
 
-Edit `src/agents.py` to adjust risk flags:
+### Step 1: Get LangSmith API Key
+
+1. Go to [https://smith.langchain.com/](https://smith.langchain.com/)
+2. Sign up/Login with your account
+3. Navigate to **Settings** → **API Keys**
+4. Create a new API key
+5. Copy the key (starts with `ls_`)
+
+### Step 2: Configure Environment Variables
+
+<!-- #### Option A: Export in Terminal (Temporary)
+
+```bash
+export LANGCHAIN_API_KEY="ls_your_api_key_here"
+export LANGCHAIN_TRACING_V2="true"
+export LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
+
+export OPENAI_API_KEY=ls_your_api_key_here
+# OR use local Ollama (no API key needed)
+export MODEL_PROVIDER="ollama"             # Force Ollama usage
+export OLLAMA_MODEL="llama3.2:3b"         # Optional: specify 
+export POLYGON_API_KEY=ls_your_api_key_here
+```
+
+#### Option B: Create .env File (Recommended) -->
+
+Create a `.env` file in your project root:
+
+```bash
+# .env
+LANGCHAIN_API_KEY=ls_your_api_key_here
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT="Multi-Agent Finance Bot"
+
+OPENAI_API_KEY=ls_your_api_key_here
+# OR use local Ollama (no API key needed)
+OLLAMA_MODEL="llama3.2:3b"
+
+POLYGON_API_KEY=ls_your_api_key_here
+```
+
+Then load it before running:
+
+```bash
+source .env
+```
+
+<!-- #### Option C: Set in main.py (Code-based)
+
+Edit `src/main.py` and ensure these lines are uncommented:
 
 ```python
-# Customize risk thresholds
-if stats["annual_vol"] > 0.45: flags.append("HIGH_VOLATILITY")
-if stats["max_drawdown"] < -0.25: flags.append("DEEP_DRAWDOWN")
+# LangSmith configuration
+os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
+``` -->
+
+## �� Running the System
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run the multi-agent system
+python -m src.main
 ```
+
+## 📊 What You'll See
+
+### Console Output
+
+The system will display:
+- **News Retrieval**: Real-time news fetching with URL content extraction
+- **Fundamental Analysis**: RAG-powered analysis of 10-K/10-Q SEC filings with comprehensive insights
+- **Valuation Analysis**: Computational metrics (annualized returns, volatility using 252-day formula)
+- **Sentiment Analysis**: Reflection-enhanced prompting with confidence scores
+- **Risk Metrics**: Traditional financial risk calculations and flags
+- **Debug Information**: Data processing steps and agent workflow
+- **Final Report**: Complete Markdown risk analysis with all sections
+- **Final State**: Complete state object with all agent outputs
+
+### LangSmith Platform (if enabled)
+
+Visit [https://smith.langchain.com/](https://smith.langchain.com/) to see:
+- **Project Dashboard**: "Multi-Agent Finance Bot"
+- **Execution Traces**: Complete workflow runs
+- **Agent Performance**: Timing and success rates
+- **Data Flow**: Input/output between agents
+- **Debugging**: Detailed execution logs
 
 ## � Fundamental Analysis & RAG System
 
@@ -406,4 +303,24 @@ for chunk in results:
     print(chunk.page_content)
 ```
 
-## �📁 Project Structure
+## 📚 Additional Documentation
+
+- **LangSmith Traces**: Monitor agent execution at [smith.langchain.com](https://smith.langchain.com/)
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Fundamental Agent Issues
+- **"OpenAI API key not set"**: Ensure `OPENAI_API_KEY` is set in your environment
+- **"ChromaDB errors"**: Delete `./data/chroma_db/` and reinitialize with sample data
+- **"Agent timeout"**: Increase `max_iterations` in the fundamental agent configuration
+
+#### General Issues
+- **Import errors**: Ensure virtual environment is activated and dependencies are installed
+- **No news data**: Check `POLYGON_API_KEY` is set and valid
+- **LangSmith not working**: Verify `LANGCHAIN_API_KEY` and `LANGCHAIN_TRACING_V2=true`
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details., technical analysis, and risk assessment.

@@ -1,6 +1,8 @@
 import ast
 import numpy as np
 import pandas as pd
+import json
+import re
 from io import StringIO
 from datetime import datetime
 from typing import Optional
@@ -15,9 +17,7 @@ from .schemas import (
     SentimentSummary, ValuationMetrics, FundamentalAnalysis
 )
 from .rag_utils import initialize_sample_data, FundamentalRAG, batch_ingest_documents
-from langchain.tools import Tool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langgraph.prebuilt import create_react_agent
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -68,7 +68,27 @@ from the 10K. Your analysis should be based solely on the information that you
 retrieve using this tool. You can interact with this tool using natural language
 queries. The tool will understand your requests and return relevant text snippets
 and data points from the 10K document. Keep checking if you have answered the
-users' question to avoid looping."""
+users' question to avoid looping.
+
+You are conducting fundamental analysis for a certain company. You have access to a tool
+that can query the company's 10-K/10-Q SEC filings for specific information.
+
+IMPORTANT: When calling the query_10k_documents tool, pass your queries as a
+comma-separated string like this:
+"financial metrics, business segments, risk factors, competitive position"
+
+Your task:
+1. Call the tool once with multiple queries as a comma-separated string
+2. Analyze all the retrieved information to provide comprehensive fundamental analysis
+
+Provide:
+- Executive summary (2-3 sentences)
+- Key financial insights and metrics
+- Business highlights and competitive advantages
+- Risk assessment and concerns
+- Investment thesis and recommendation
+- Financial health score (0-10) with justification
+"""
 
 WRITER_SYSTEM = "You are the Writer Agent. Produce a professional Markdown risk report based on inputs."
 
@@ -115,6 +135,51 @@ class State(BaseModel):
     fundamental: Optional[FundamentalAnalysis] = None
     metrics: Optional[RiskMetrics] = None
     report: Optional[RiskReport] = None
+
+
+def parse_agent_response(response_content: str) -> tuple[str, dict]:
+    """
+    Parse agent response to extract both analysis text and structured data.
+    
+    Returns:
+        tuple: (analysis_text, structured_dict)
+    """
+    try:
+        # Try different markers for structured data
+        marker = "STRUCTURED DATA"
+        analysis = response_content
+        structured_data = {}
+        
+        # Split by any of the markers
+        parts = response_content.split(marker)
+        analysis = parts[0].strip()
+        if parts and len(parts) > 1:
+            # Extract JSON from the second part
+            json_part = parts[1]
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', json_part, re.DOTALL)
+            json_str = json_match.group(1)
+            # Fix common escape issues in JSON
+            json_str = json_str.replace('\\$', '$')  # Fix escaped dollar signs
+            json_str = json_str.replace("\\'", "'")   # Fix escaped single quotes
+            structured_data = json.loads(json_str)
+        # else:
+        #     print("No structured data marker found, try to find JSON anywhere in the response...")
+        #     json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_content, re.DOTALL)
+        #     if json_match:
+        #         json_str = json_match.group(1)
+        #         # Fix common escape issues in JSON
+        #         json_str = json_str.replace('\\$', '$')
+        #         json_str = json_str.replace("\\'", "'")
+        #         structured_data = json.loads(json_str)
+        #         # Remove the JSON block from analysis
+        #         analysis = re.sub(r'```json\s*\{.*?\}\s*```', '', response_content, flags=re.DOTALL).strip()
+        
+        return analysis, structured_data
+    
+    except Exception as e:
+        print(f"Error parsing agent response: {e}")
+        return response_content, {}
+
 
 def data_agent(state: State, config: RunnableConfig):
     # llm = get_llm()
@@ -221,65 +286,41 @@ def sentiment_agent(state: State, config: RunnableConfig):
     - Investment recommendation with clear rationale
 
     Provide a concise summary along with an informed recommendation on whether to invest in this stock.
+
+    IMPORTANT: Also include the structured json data like the example below, with its values replaced by your analyzed results, and the exact text STRUCTURED DATA.
+    STRUCTURED DATA
+    ```json
+    {{
+        "ticker":"...",
+        "news_items_analyzed":number of news items here,
+        "overall_sentiment":"...",
+        "confidence_score":...,
+        "investment_recommendation":"...",
+        "key_insights":list of key insights of each news item,
+        "methodology":"LLM-based reflection-enhanced summarization"
+    }}
+    ```
     """
     
-    response = llm.invoke([
-        SystemMessage(content=SENTIMENT_SYSTEM),
-        HumanMessage(content=analysis_prompt)
-    ])
+    sentiment_agent = create_react_agent(llm, [], prompt=(SENTIMENT_SYSTEM))
+
+    # Execute the agent
+    try:
+        result = sentiment_agent.invoke({"messages": [("human", analysis_prompt)]})
+        # Extract the last message content from the result
+        if "messages" in result and result["messages"]:
+            analysis_content = result["messages"][-1].content
+        else:
+            analysis_content = "Agent Analysis did not return any message."
+    except Exception as e:
+        print(f"Agent execution error: {e}")
+        analysis_content = f"Tool-based analysis attempted for {state.ticker}"
     
-    # Parse the LLM response to extract structured information
-    response_text = response.content if hasattr(response, 'content') else str(response)
-    
-    # Simple sentiment extraction (could be enhanced with more sophisticated parsing)
-    sentiment_mapping = {
-        "bullish": "bullish",
-        "bearish": "bearish", 
-        "neutral": "neutral",
-        "positive": "bullish",
-        "negative": "bearish"
-    }
-    
-    overall_sentiment = "neutral"
-    confidence_score = 0.5
-    
-    # Extract sentiment from response
-    response_lower = response_text.lower()
-    for keyword, sentiment in sentiment_mapping.items():
-        if keyword in response_lower:
-            overall_sentiment = sentiment
-            break
-    
-    # Extract confidence (simple heuristic)
-    if "high confidence" in response_lower or "very confident" in response_lower:
-        confidence_score = 0.8
-    elif "low confidence" in response_lower or "uncertain" in response_lower:
-        confidence_score = 0.3
-    elif "moderate" in response_lower or "medium" in response_lower:
-        confidence_score = 0.6
-    
-    # Extract key insights (simple extraction based on common patterns)
-    key_insights = []
-    lines = response_text.split('\n')
-    for line in lines:
-        line = line.strip()
-        if line.startswith('-') or line.startswith('•') or 'insight' in line.lower():
-            key_insights.append(line.strip('- •').strip())
-    
-    if not key_insights:
-        key_insights = ["Analysis completed using reflection-enhanced prompting methodology"]
-    
-    sentiment_summary = SentimentSummary(
-        ticker=state.ticker,
-        news_items_analyzed=len(state.news.items),
-        overall_sentiment=overall_sentiment,
-        confidence_score=confidence_score,
-        # summary=response_text[:500] + "..." if len(response_text) > 500 else response_text,
-        summary=response_text,
-        investment_recommendation=f"Based on sentiment analysis: {overall_sentiment} outlook with {confidence_score:.1%} confidence",
-        key_insights=key_insights[:5],  # Limit to top 5 insights
-        methodology="LLM-based reflection-enhanced summarization"
-    )
+    print(f"analysis_content is: {analysis_content}")
+    analysis, structured_data = parse_agent_response(analysis_content)
+    structured_data["summary"] = analysis_content
+    print(f"structured_data type is: {type(structured_data)}. Vlaue is: {structured_data}")
+    sentiment_summary = SentimentSummary(**structured_data)
     
     new_state = State(
         ticker=state.ticker,
@@ -329,59 +370,21 @@ def fundamental_agent(state: State, config: RunnableConfig):
             methodology="RAG-enhanced 10-K/10-Q document analysis"
         )
     else:
-        # Create a custom tool that wraps our RAG function
-        rag_tool = Tool(
-            name="query_10k_documents",
-            description=(
-                f"Query {state.ticker}'s 10-K/10-Q SEC filings for information. "
-                "Pass a string with comma-separated queries like: "
-                "'financial metrics, business segments, risk factors, competitive position'"
-            ),
-            func=lambda query: query_10k_documents.invoke({
-                "ticker": state.ticker,
-                "query": query
-            })
-        )
-        
         # Create agent with tools
         llm = get_llm()
-        tools = [rag_tool]
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""
-            {FUNDAMENTAL_SYSTEM}
-            
-            You are conducting fundamental analysis for {state.ticker}. You have access to a tool
-            that can query the company's 10-K/10-Q SEC filings for specific information.
-            
-            IMPORTANT: When calling the query_10k_documents tool, pass your queries as a 
-            comma-separated string like this:
-            "financial metrics, business segments, risk factors, competitive position"
-            
-            Your task:
-            1. Call the tool once with multiple queries as a comma-separated string
-            2. Analyze all the retrieved information to provide comprehensive fundamental analysis
-            
-            Provide:
-            - Executive summary (2-3 sentences)
-            - Key financial insights and metrics
-            - Business highlights and competitive advantages
-            - Risk assessment and concerns
-            - Investment thesis and recommendation
-            - Financial health score (0-10) with justification
-            """),
-            ("human", "Please analyze {ticker} using the 10-K/10-Q documents. "
-             "Use the tool with comma-separated queries like: 'financial metrics, business segments, risk factors, competitive position'"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        agent = create_tool_calling_agent(llm, tools, prompt)
-        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=3)
+        fundamental_agent = create_react_agent(llm, [query_10k_documents], prompt=(FUNDAMENTAL_SYSTEM))
         
         # Execute the agent
         try:
-            result = agent_executor.invoke({"ticker": state.ticker}, config=config)
-            analysis_content = result.get("output", "Analysis completed using RAG tools")
+            query_msg = (
+                f"Please analyze {state.ticker} using the 10-K/10-Q documents. "
+            )
+            result = fundamental_agent.invoke({"messages": [("human", query_msg)]})
+            # Extract the last message content from the result
+            if "messages" in result and result["messages"]:
+                analysis_content = result["messages"][-1].content
+            else:
+                analysis_content = "Agent Analysis did not return any message."
         except Exception as e:
             print(f"Agent execution error: {e}")
             analysis_content = f"Tool-based analysis attempted for {state.ticker}"
@@ -438,14 +441,23 @@ def fundamental_agent(state: State, config: RunnableConfig):
     return new_state
 
 
-def _compute_valuation_metrics(price_csv: str, ticker: str, period: str) -> ValuationMetrics:
+def _compute_valuation_metrics(price_csv: str, ticker: str, period: str) -> dict:
     """
     Compute valuation metrics including annualized return and volatility.
     Uses the formulas specified:
     - R_annualized = ((1 + R_cumulative)^(252/n)) - 1
     - σ_annualized = σ_daily × √252
+    
+    Args:
+        price_csv: csv data of stock price
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        period: Period of the observed stock price
+        
+    Returns:
+        Returns dictionary of ValuationMetrics result
     """
     try:
+        print(f"📊 Computing valuation metrics for {ticker}...")
         # Parse the CSV data
         df = pd.read_csv(StringIO(price_csv))
         
@@ -528,38 +540,38 @@ def _compute_valuation_metrics(price_csv: str, ticker: str, period: str) -> Valu
         # Trend analysis
         trend_analysis = f"The {ticker} exhibits a {price_trend} trend over the analysis period with {volatility_regime} volatility regime."
         
-        return ValuationMetrics(
-            ticker=ticker,
-            analysis_period=period,
-            trading_days=n,
-            cumulative_return=cumulative_return,
-            annualized_return=annualized_return,
-            daily_volatility=daily_volatility,
-            annualized_volatility=annualized_volatility,
-            price_trend=price_trend,
-            volatility_regime=volatility_regime,
-            valuation_insights=insights,
-            trend_analysis=trend_analysis,
-            risk_assessment=risk_assessment
-        )
+        return {
+            "ticker": ticker,
+            "analysis_period": period,
+            "trading_days": n,
+            "cumulative_return": cumulative_return,
+            "annualized_return": annualized_return,
+            "daily_volatility": daily_volatility,
+            "annualized_volatility": annualized_volatility,
+            "price_trend": price_trend,
+            "volatility_regime": volatility_regime,
+            "valuation_insights": insights,
+            "trend_analysis": trend_analysis,
+            "risk_assessment": risk_assessment
+        }
         
     except Exception as e:
         print(f"Error computing valuation metrics: {e}")
         # Return default metrics on error
-        return ValuationMetrics(
-            ticker=ticker,
-            analysis_period=period,
-            trading_days=0,
-            cumulative_return=0.0,
-            annualized_return=0.0,
-            daily_volatility=0.0,
-            annualized_volatility=0.0,
-            price_trend="sideways",
-            volatility_regime="medium",
-            valuation_insights=["Error in calculation - insufficient data"],
-            trend_analysis="Unable to determine trend due to data issues",
-            risk_assessment="Cannot assess risk due to insufficient data"
-        )
+        return {
+            "ticker": ticker,
+            "analysis_period": period,
+            "trading_days": 0,
+            "cumulative_return": 0.0,
+            "annualized_return": 0.0,
+            "daily_volatility": 0.0,
+            "annualized_volatility": 0.0,
+            "price_trend": "sideways",
+            "volatility_regime": "medium",
+            "valuation_insights": ["Error in calculation - insufficient data"],
+            "trend_analysis": "Unable to determine trend due to data issues",
+            "risk_assessment": "Cannot assess risk due to insufficient data"
+        }
 
 
 def valuation_agent(state: State, config: RunnableConfig):
@@ -568,6 +580,7 @@ def valuation_agent(state: State, config: RunnableConfig):
     and trends using computational tools for volatility and return calculations.
     """
     llm = get_llm()
+    valuation_metrics = None
     
     # Check if we have market data
     if not state.market or not state.market.price_csv:
@@ -588,42 +601,34 @@ def valuation_agent(state: State, config: RunnableConfig):
             risk_assessment="Unable to assess risk without market data"
         )
     else:
-        # Compute valuation metrics using computational tools
-        print(f"📊 Computing valuation metrics for {state.ticker}...")
-        valuation_metrics = _compute_valuation_metrics(
-            state.market.price_csv, 
-            state.ticker, 
-            state.period
-        )
+        valuation_agent = create_react_agent(llm, [_compute_valuation_metrics], prompt=(VALUATION_SYSTEM))
         
         # Use LLM for enhanced trend analysis and interpretation
         analysis_prompt = f"""
-        Based on the computed valuation metrics for {state.ticker}:
-        
-        - Analysis Period: {valuation_metrics.analysis_period}
-        - Trading Days: {valuation_metrics.trading_days}
-        - Cumulative Return: {valuation_metrics.cumulative_return:.4f} ({valuation_metrics.cumulative_return:.2%})
-        - Annualized Return: {valuation_metrics.annualized_return:.4f} ({valuation_metrics.annualized_return:.2%})
-        - Daily Volatility: {valuation_metrics.daily_volatility:.6f}
-        - Annualized Volatility: {valuation_metrics.annualized_volatility:.4f} ({valuation_metrics.annualized_volatility:.2%})
-        - Price Trend: {valuation_metrics.price_trend}
-        - Volatility Regime: {valuation_metrics.volatility_regime}
-        - Market Price: {state.market.price_csv}
-        
+        Compute the valuation metrics for {state.ticker}, price_csv:{state.market.price_csv}, period:{state.period}.
         Provide enhanced trend analysis and investment implications based on these metrics.
         """
         
         try:
-            response = llm.invoke([
-                SystemMessage(content=VALUATION_SYSTEM),
-                HumanMessage(content=analysis_prompt)
-            ])
+            tool_results = []
+            final_response = None
+            for chunk in valuation_agent.stream({"messages": [("human", analysis_prompt)]}):
+                # Capture tool calls and results
+                for node_name, node_update in chunk.items():
+                    messages = node_update.get("messages", [])
+                    for message in messages:
+                        if hasattr(message, 'content') and "tool_call_id" in str(message):
+                            # This is a tool result
+                            tool_results.append(message.content)
+                        elif hasattr(message, 'content'):
+                            # This might be the final response
+                            final_response = message.content
             
-            # Extract enhanced analysis from LLM response
-            enhanced_analysis = response.content if hasattr(response, 'content') else str(response)
-            
+            # print(f"tool_results: {tool_results}, type: {type(tool_results)}")
+            valuation_metrics = ValuationMetrics(**ast.literal_eval(tool_results[-1]))
             # Update the valuation metrics with enhanced analysis
-            valuation_metrics.trend_analysis = enhanced_analysis
+            valuation_metrics.trend_analysis = final_response
+            print(f"trend_analysis is: {final_response}")
             
         except Exception as e:
             print(f"⚠️  Error in LLM analysis: {e}")
