@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import jsPDF from 'jspdf';
@@ -20,6 +20,20 @@ function App() {
   const [prompt, setPrompt] = useState('');
   const [promptStatus, setPromptStatus] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [providerInfo, setProviderInfo] = useState(null);
+
+  useEffect(() => {
+    // Detect active model/provider from backend
+    const fetchModels = async () => {
+      try {
+        const res = await axios.get('/api/models');
+        setProviderInfo(res.data);
+      } catch (_) {
+        // ignore – UI still works without this
+      }
+    };
+    fetchModels();
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -215,7 +229,13 @@ function App() {
         {/* Header */}
         <div className="header">
           <h1>🤖 Multi-Agent Finance Risk Analysis</h1>
-          <p>Powered by LangGraph & Local Ollama Qwen Model</p>
+          <p>
+            {providerInfo?.provider === 'openai'
+              ? `Using OpenAI ${providerInfo.current_model}`
+              : providerInfo?.provider === 'ollama'
+              ? `Using Ollama ${providerInfo.current_model}`
+              : 'Model provider unknown'}
+          </p>
         </div>
 
         {/* Input Form */}

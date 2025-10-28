@@ -134,10 +134,15 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
                 pass
     
     # Specific provider selection
-    elif model_provider == "openai" and os.getenv("OPENAI_API_KEY") and ChatOpenAI:
+    elif model_provider == "openai":
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not ChatOpenAI:
+            raise RuntimeError("OpenAI provider requested but langchain-openai is not installed. Run: pip install langchain-openai")
+        if not openai_key:
+            raise RuntimeError("OpenAI provider requested but OPENAI_API_KEY is not set.")
         print("🤖 Using OpenAI GPT models")
         return ChatOpenAI(
-            model="gpt-4o-mini",  # Latest cost-effective model
+            model="gpt-4o",  # Primary target model
             temperature=temperature,
             max_tokens=1000
         )

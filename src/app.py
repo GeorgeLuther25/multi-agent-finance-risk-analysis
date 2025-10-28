@@ -37,13 +37,14 @@ def analyze_stock():
             horizon_days=int(data['horizon_days'])
         )
         
-        # Quick Ollama reachability check (fail fast)
-        try:
-            _ = requests.get(
-                'http://localhost:11434/api/tags', timeout=2
-            )
-        except Exception:
-            return jsonify({'error': 'Ollama is not reachable. Start it with: ollama serve'}), 503
+        # Provider gating: if OpenAI is configured, skip any Ollama checks entirely
+        provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
+        openai_key = os.getenv('OPENAI_API_KEY')
+        use_openai = (provider == 'openai' and openai_key) or (provider == 'auto' and openai_key)
+
+        if not use_openai:
+            # Strict OpenAI-only mode: do not proceed without OpenAI
+            return jsonify({'error': 'OpenAI GPT-4o not configured. Set MODEL_PROVIDER=openai and OPENAI_API_KEY.'}), 503
 
         # Build the graph
         graph = main.build_graph()
@@ -155,14 +156,35 @@ def health_check():
 
 @app.route('/api/models', methods=['GET'])
 def get_available_models():
+    provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
+    openai_key = os.getenv('OPENAI_API_KEY')
+    if provider == 'auto':
+        provider = 'openai' if openai_key else 'ollama'
+
+    if provider == 'openai':
+        current_model = os.getenv('OPENAI_MODEL', 'gpt-4o')
+        description = 'OpenAI GPT model'
+        models = [current_model]
+    else:
+        current_model = os.getenv('OLLAMA_MODEL', 'qwen3:4b')
+        description = 'Local Ollama model'
+        models = [current_model]
+
     return jsonify({
-        'models': ['qwen3:4b'],
-        'current_model': 'qwen3:4b',
-        'description': 'Local Ollama Qwen 4B model'
+        'provider': provider,
+        'models': models,
+        'current_model': current_model,
+        'description': description
     })
 
 if __name__ == '__main__':
     print("🚀 Starting Finance Risk Analysis API...")
     print("📊 Multi-Agent System Ready")
-    print("🤖 Using Local Ollama Qwen:4b Model")
+    provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
+    openai_key = os.getenv('OPENAI_API_KEY')
+    effective_provider = 'openai' if (provider == 'openai' and openai_key) or (provider == 'auto' and openai_key) else 'ollama'
+    if effective_provider == 'openai':
+        print(f"🤖 Using OpenAI model: {os.getenv('OPENAI_MODEL', 'gpt-4o')}")
+    else:
+        print(f"🤖 Using Ollama model: {os.getenv('OLLAMA_MODEL', 'qwen3:4b')}")
     app.run(debug=True, host='0.0.0.0', port=5001)
