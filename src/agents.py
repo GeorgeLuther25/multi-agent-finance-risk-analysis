@@ -1,4 +1,5 @@
 import ast
+import json
 import numpy as np
 import pandas as pd
 from io import StringIO
@@ -8,16 +9,13 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
-from .config import get_llm
-from .tools import get_price_history, get_recent_news, query_10k_documents
-from .schemas import (
+from config import get_llm
+from tools import get_price_history, get_recent_news, query_10k_documents
+from schemas import (
     MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport,
     SentimentSummary, ValuationMetrics, FundamentalAnalysis
 )
-from .rag_utils import initialize_sample_data, FundamentalRAG, batch_ingest_documents
-from langchain.tools import Tool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from rag_utils import initialize_sample_data, FundamentalRAG, batch_ingest_documents
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -218,13 +216,24 @@ def sentiment_agent(state: State, config: RunnableConfig):
     Provide a concise summary along with an informed recommendation on whether to invest in this stock.
     """
     
-    response = llm.invoke([
-        SystemMessage(content=SENTIMENT_SYSTEM),
-        HumanMessage(content=analysis_prompt)
-    ])
-    
-    # Parse the LLM response to extract structured information
-    response_text = response.content if hasattr(response, 'content') else str(response)
+    try:
+        response = llm.invoke([
+            SystemMessage(content=SENTIMENT_SYSTEM),
+            HumanMessage(content=analysis_prompt)
+        ])
+        response_text = response.content if hasattr(response, 'content') else str(response)
+    except Exception as e:
+        print(f"⚠️  Sentiment LLM call failed: {e}")
+        # Fallback: build a simple analysis from the raw news items
+        summaries = []
+        for item in state.news.items if state.news and state.news.items else []:
+            sentiment = item.sentiment.lower()
+            summaries.append(f"{item.date}: {item.headline} (sentiment: {sentiment})")
+        response_text = (
+            "Sentiment analysis fallback due to LLM error.\n"
+            + "\n".join(summaries) if summaries else
+            "Sentiment analysis fallback triggered but no news items were available."
+        )
     
     # Simple sentiment extraction (could be enhanced with more sophisticated parsing)
     sentiment_mapping = {
@@ -324,63 +333,86 @@ def fundamental_agent(state: State, config: RunnableConfig):
             methodology="RAG-enhanced 10-K/10-Q document analysis"
         )
     else:
-        # Create a custom tool that wraps our RAG function
-        rag_tool = Tool(
-            name="query_10k_documents",
-            description=(
-                f"Query {state.ticker}'s 10-K/10-Q SEC filings for information. "
-                "Pass a string with comma-separated queries like: "
-                "'financial metrics, business segments, risk factors, competitive position'"
-            ),
-            func=lambda query: query_10k_documents.invoke({
-                "ticker": state.ticker,
-                "query": query
-            })
-        )
-        
-        # Create agent with tools
         llm = get_llm()
-        tools = [rag_tool]
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""
-            {FUNDAMENTAL_SYSTEM}
-            
-            You are conducting fundamental analysis for {state.ticker}. You have access to a tool
-            that can query the company's 10-K/10-Q SEC filings for specific information.
-            
-            IMPORTANT: When calling the query_10k_documents tool, pass your queries as a 
-            comma-separated string like this:
-            "financial metrics, business segments, risk factors, competitive position"
-            
-            Your task:
-            1. Call the tool once with multiple queries as a comma-separated string
-            2. Analyze all the retrieved information to provide comprehensive fundamental analysis
-            
-            Provide:
-            - Executive summary (2-3 sentences)
-            - Key financial insights and metrics
-            - Business highlights and competitive advantages
-            - Risk assessment and concerns
-            - Investment thesis and recommendation
-            - Financial health score (0-10) with justification
-            """),
-            ("human", "Please analyze {ticker} using the 10-K/10-Q documents. "
-             "Use the tool with comma-separated queries like: 'financial metrics, business segments, risk factors, competitive position'"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        agent = create_tool_calling_agent(llm, tools, prompt)
-        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=3)
-        
-        # Execute the agent
+        default_queries = [
+            "executive summary",
+            "financial metrics",
+            "business segments",
+            "risk factors",
+            "competitive position",
+            "growth prospects",
+            "investment outlook"
+        ]
+        query_payload = ", ".join(default_queries)
         try:
-            result = agent_executor.invoke({"ticker": state.ticker}, config=config)
-            analysis_content = result.get("output", "Analysis completed using RAG tools")
+            rag_result = query_10k_documents.invoke({
+                "ticker": state.ticker,
+                "query": query_payload
+            })
         except Exception as e:
-            print(f"Agent execution error: {e}")
-            analysis_content = f"Tool-based analysis attempted for {state.ticker}"
-        
+            print(f"query_10k_documents invocation failed: {e}")
+            rag_result = ""
+
+        if isinstance(rag_result, list):
+            context = "\n\n".join(str(chunk) for chunk in rag_result)
+        else:
+            context = str(rag_result or "")
+
+        if not context.strip() or context.strip().upper().startswith("ERROR"):
+            context = "No substantive filing excerpts were retrieved."
+
+        analysis_messages = [
+            SystemMessage(content=f"""
+{FUNDAMENTAL_SYSTEM}
+
+Analyze the provided filing excerpts for {state.ticker}. Return a compact JSON object using this schema:
+{{
+  "executive_summary": "...",
+  "key_financial_metrics": {{"metric": "value", "...": "..."}},
+  "business_highlights": ["..."],
+  "risk_factors": ["..."],
+  "competitive_position": "...",
+  "growth_prospects": "...",
+  "financial_health_score": 0.0,
+  "investment_thesis": "...",
+  "concerns_and_risks": ["..."]
+}}
+Ensure the response is valid JSON and keep numeric scores between 0 and 10.
+"""),
+            HumanMessage(content=f"Filing excerpts for {state.ticker}:\n{context}\n\nProduce the JSON now.")
+        ]
+
+        try:
+            model_response = llm.invoke(analysis_messages, config=config)
+            analysis_content = model_response.content if hasattr(model_response, "content") else str(model_response)
+        except Exception as e:
+            print(f"LLM fundamental analysis error: {e}")
+            analysis_content = ""
+
+        parsed = {}
+        if analysis_content:
+            try:
+                parsed = json.loads(analysis_content)
+            except json.JSONDecodeError:
+                print("Fundamental analysis did not return JSON; using fallback text.")
+
+        filing_info = available_filings[0]
+
+        executive_summary = parsed.get("executive_summary") if isinstance(parsed, dict) else None
+        key_metrics = parsed.get("key_financial_metrics") if isinstance(parsed, dict) else None
+        business_highlights = parsed.get("business_highlights") if isinstance(parsed, dict) else None
+        risk_factors = parsed.get("risk_factors") if isinstance(parsed, dict) else None
+        competitive_position = parsed.get("competitive_position") if isinstance(parsed, dict) else None
+        growth_prospects = parsed.get("growth_prospects") if isinstance(parsed, dict) else None
+        investment_thesis = parsed.get("investment_thesis") if isinstance(parsed, dict) else None
+        concerns_and_risks = parsed.get("concerns_and_risks") if isinstance(parsed, dict) else None
+
+        try:
+            score = float(parsed.get("financial_health_score", 6.5)) if isinstance(parsed, dict) else 6.5
+        except (TypeError, ValueError):
+            score = 6.5
+        score = min(max(score, 0.0), 10.0)
+
         filing_info = available_filings[0]
         
         # Create structured fundamental analysis
@@ -389,32 +421,22 @@ def fundamental_agent(state: State, config: RunnableConfig):
             filing_type=filing_info.get("filing_type", "10-K"),
             filing_date=filing_info.get("ingestion_date", "Unknown"),
             analysis_date=datetime.now().strftime("%Y-%m-%d"),
-            executive_summary=analysis_content,
-            key_financial_metrics={"analysis": "Agent-based RAG tool analysis"},
-            business_highlights=[
-                "Tool-based analysis from SEC filings",
-                "Comprehensive document queries",
-                "Automated information extraction",
-                "Strategic insights from 10-K/10-Q",
-                "Financial metrics assessment"
+            executive_summary=executive_summary or analysis_content or "Fundamental analysis generated without structured details.",
+            key_financial_metrics=key_metrics if isinstance(key_metrics, dict) else {"summary": analysis_content or "No metrics extracted."},
+            business_highlights=business_highlights if isinstance(business_highlights, list) else [
+                "Automated summary from SEC filings"
             ],
-            risk_factors=[
-                "Business and operational risks",
-                "Market and competitive risks",
-                "Financial and credit risks",
-                "Regulatory and compliance risks",
-                "Economic and industry risks"
+            risk_factors=risk_factors if isinstance(risk_factors, list) else [
+                "Risk factors could not be parsed from filings."
             ],
-            competitive_position="Agent-based assessment using SEC filing tools",
-            growth_prospects="Tool-derived analysis from document queries",
-            financial_health_score=7.5,
-            investment_thesis=f"Agent-executed RAG tool analysis of {state.ticker}",
-            concerns_and_risks=[
-                "Market volatility impacts",
-                "Competitive positioning challenges",
-                "Regulatory compliance requirements"
+            competitive_position=competitive_position or "Competitive positioning insights were inferred from filings.",
+            growth_prospects=growth_prospects or "Growth outlook inferred from available filing excerpts.",
+            financial_health_score=score,
+            investment_thesis=investment_thesis or f"Analysis synthesized from {state.ticker}'s SEC filings.",
+            concerns_and_risks=concerns_and_risks if isinstance(concerns_and_risks, list) else [
+                "Further review of filings recommended."
             ],
-            methodology="LangChain agent with RAG tools for 10-K/10-Q analysis"
+            methodology="RAG-enhanced 10-K/10-Q document analysis"
         )
     
     new_state = State(
@@ -613,16 +635,16 @@ def valuation_agent(state: State, config: RunnableConfig):
                 SystemMessage(content=VALUATION_SYSTEM),
                 HumanMessage(content=analysis_prompt)
             ])
-            
-            # Extract enhanced analysis from LLM response
+
             enhanced_analysis = response.content if hasattr(response, 'content') else str(response)
-            
-            # Update the valuation metrics with enhanced analysis
             valuation_metrics.trend_analysis = enhanced_analysis
-            
+
         except Exception as e:
             print(f"⚠️  Error in LLM analysis: {e}")
-            # Keep the computational analysis
+            valuation_metrics.trend_analysis = (
+                valuation_metrics.trend_analysis
+                + "\n\nLLM commentary unavailable; using computed metrics only."
+            )
     
     # Create new state with valuation metrics
     new_state = State(
@@ -642,7 +664,10 @@ def valuation_agent(state: State, config: RunnableConfig):
 
 def risk_agent(state: State, config: RunnableConfig):
     llm = get_llm()
-    _ = llm.invoke([SystemMessage(content=RISK_SYSTEM), HumanMessage(content="compute risk")])  # tracing
+    try:
+        _ = llm.invoke([SystemMessage(content=RISK_SYSTEM), HumanMessage(content="compute risk")])  # tracing
+    except Exception as e:
+        print(f"⚠️  Risk LLM call skipped: {e}")
     stats = _compute_risk(state.market.price_csv if state.market else "")
     notes, flags = [], []
     if "error" in stats:
@@ -768,69 +793,151 @@ No valuation analysis available - insufficient market data.
 No fundamental analysis available - no 10-K/10-Q data found.
 """
 
-    md = f"""# Comprehensive Analysis Report — {state.ticker}
+    current_ts = datetime.utcnow().strftime('%b %d, %Y at %I:%M %p UTC').replace(' 0', ' ').lstrip('0')
 
-**As of:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
+    metrics_obj = state.metrics
+    valuation_obj = state.valuation
+    sentiment_obj = state.sentiment
+    fundamental_obj = state.fundamental
 
-## Analyzed Content
-Comprehensive risk, valuation, sentiment, and fundamental analysis for {state.ticker} over the past {state.period}. Horizon: {state.horizon_days} days.
+    if metrics_obj and metrics_obj.risk_flags:
+        risk_summary = "Risk watchlist flagged: " + ", ".join(metrics_obj.risk_flags)
+    else:
+        risk_summary = "Key risk indicators are within typical ranges."
 
+    volatility_label = "unknown"
+    if metrics_obj and metrics_obj.annual_vol is not None:
+        volatility_label = "low" if metrics_obj.annual_vol < 0.15 else "elevated"
 
-{valuation_section}
+    if valuation_obj:
+        valuation_trend = valuation_obj.price_trend
+        valuation_tone = (
+            "Trend shows constructive momentum."
+            if valuation_obj.price_trend != "downward"
+            else "Trend pressure leans negative; review positioning."
+        )
+    else:
+        valuation_trend = "Price momentum unclear"
+        valuation_tone = "Insufficient data to characterise trend."
 
+    if sentiment_obj:
+        if sentiment_obj.overall_sentiment == "bullish":
+            sentiment_tone = "Sentiment skews bullish."
+        elif sentiment_obj.overall_sentiment == "bearish":
+            sentiment_tone = "Sentiment caution persists."
+        else:
+            sentiment_tone = "Sentiment mix appears balanced."
+    else:
+        sentiment_tone = "Sentiment data limited."
 
-{fundamental_section}
+    if fundamental_obj:
+        if fundamental_obj.financial_health_score >= 7:
+            fundamental_tone = (
+                f"Financial health score {fundamental_obj.financial_health_score:.1f}/10 reflects solid fundamentals."
+            )
+        else:
+            fundamental_tone = (
+                f"Financial health score {fundamental_obj.financial_health_score:.1f}/10 highlights areas to monitor."
+            )
+    else:
+        fundamental_tone = "Fundamental details unavailable."
 
+    if sentiment_obj and sentiment_obj.overall_sentiment == "bullish":
+        bottom_line = "Position looks resilient but stay selective."
+    else:
+        bottom_line = "Maintain watchful posture and reassess catalysts."
 
-## Key Risk Metrics
-- Annualized Volatility: **{state.metrics.annual_vol:.4f}**
-- Max Drawdown: **{state.metrics.max_drawdown:.4f}**
-- 1D VaR (95%): **{state.metrics.daily_var_95:.4f}**
-- Sharpe-like: **{state.metrics.sharpe_like}**
+    news_entries = []
+    if state.news and state.news.items:
+        for item in state.news.items:
+            news_entries.append(f"- {item.date}: {item.headline} [{item.sentiment}]")
+    news_section = "\n".join(news_entries) if news_entries else "No recent headlines captured."
 
+    notes_text = (
+        ", ".join(metrics_obj.notes) if metrics_obj and metrics_obj.notes else "No unusual observations logged."
+    )
 
-## Risk Flags
-{', '.join(state.metrics.risk_flags) if state.metrics.risk_flags else 'None'}
+    md = f"""# {state.ticker} Investment Brief
+**Last refreshed:** {current_ts}
 
+---
 
+## Snapshot
+| Lens | Takeaway |
+| --- | --- |
+| Price action | {valuation_tone} |
+| Risk posture | {risk_summary} |
+| Sentiment pulse | {sentiment_tone} |
+| Fundamentals | {fundamental_tone} |
+
+---
+
+## Executive Dashboard
+- **What stands out:** {valuation_trend} trend paired with {volatility_label} volatility.
+- **Primary question:** Is the current narrative supportive of further upside given risk levels?
+- **Bottom line:** {bottom_line}
+
+---
+
+## Decision Lens
+### 1. Market Structure
+- Period assessed: {state.period}
+- Horizon in focus: {state.horizon_days} days
+- Storyline: {valuation_tone}
+
+### 2. Risk Review
+- Default read: {risk_summary}
+- Notes: {notes_text}
+
+### 3. Fundamental Pulse
+- Filing types covered: {fundamental_obj.filing_type if fundamental_obj else 'N/A'}
+- Executive summary: {fundamental_obj.executive_summary if fundamental_obj else 'Insufficient filing coverage.'}
+- Thesis highlights: {fundamental_obj.investment_thesis if fundamental_obj else 'No official thesis compiled.'}
+
+---
+
+## Supporting Detail
+### Sentiment & Narrative
 {sentiment_section}
 
+### Valuation Context
+{valuation_section}
 
-## Recent News (stub)
-{chr(10).join(f"- {n.date}: {n.headline} [{n.sentiment}]" for n in (state.news.items if state.news else []))}
+### Fundamental Highlights
+{fundamental_section}
 
+### Recent Headlines
+{news_section}
 
-## Methodology
-- Prices from yfinance; log returns
-- Annualized vol = std(returns)*sqrt(252)
-- Max drawdown = min(Price/Peak - 1)
-- VaR(95%) = -(μ + 1.645σ), Gaussian
-- Valuation metrics: R_annualized = ((1 + R_cumulative)^(252/n)) - 1, σ_annualized = σ_daily × √252
-- Sentiment analysis uses LLM-based reflection-enhanced summarization
-- Fundamental analysis uses RAG-enhanced 10-K/10-Q document analysis
+---
+
+## Methodology Notes
+- Sequenced multi-agent workflow: market data → sentiment → valuation → fundamentals → risk → writer.
+- Market data via yfinance; fallback narratives when data unavailable.
+- News ingestion uses Polygon (if configured) otherwise synthetic briefs; sentiment generated via LLM feedback loop.
+- Fundamental insights extracted through RAG over ingested 10-K/10-Q filings.
+- Risk metrics computed from returns-based analytics (volatility, drawdown, VaR).
 """
     # _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
     
     # Create key findings including valuation and fundamental analysis
     key_findings = [
-        "Automated metrics computed from historical data.",
-        "Sentiment analysis from recent news."
+        "Market action reviewed across price, risk, fundamental, and sentiment dimensions.",
+        "Composite takeaway blends model-driven metrics with narrative context."
     ]
     if state.valuation:
         key_findings.append(
-            f"Valuation analysis shows {state.valuation.price_trend} trend "
-            f"with {state.valuation.volatility_regime} volatility regime."
+            f"Market tone: {state.valuation.price_trend} trend amid {state.valuation.volatility_regime} volatility regime."
         )
+    if state.sentiment:
         key_findings.append(
-            f"Annualized return of {state.valuation.annualized_return:.2%} "
-            f"over {state.valuation.trading_days} trading days."
+            f"Sentiment skew: {state.sentiment.overall_sentiment} with confidence {state.sentiment.confidence_score:.0%}."
         )
     if state.fundamental:
         key_findings.append(
-            f"Fundamental analysis based on {state.fundamental.filing_type} filing "
-            f"with financial health score of {state.fundamental.financial_health_score:.1f}/10."
+            f"Fundamental signal: Financial health score {state.fundamental.financial_health_score:.1f}/10 from latest filings."
         )
-    
+
     report = RiskReport(
         ticker=state.ticker,
         as_of=datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC'),

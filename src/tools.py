@@ -5,7 +5,7 @@ import json
 import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Union
-from langchain.tools import tool
+from langchain_core.tools import tool
 from textblob import TextBlob
 import warnings
 warnings.filterwarnings("ignore")

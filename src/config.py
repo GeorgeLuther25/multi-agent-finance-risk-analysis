@@ -94,19 +94,21 @@ def get_llm(temperature: float = 0.1, model_provider: str = "auto"):
         # Local Qwen (via Ollama)
         elif (ChatOllama or Ollama):
             try:
+                ollama_model = os.getenv("OLLAMA_MODEL", "qwen:4b")
+                ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
                 if ChatOllama:
-                    print("🤖 Using local Qwen (chat) via Ollama")
+                    print("🤖 Using OpenAI ChatGPT (chat) via Ollama")
                     return ChatOllama(
-                        model="qwen:4b",
+                        model=ollama_model,
                         temperature=temperature,
-                        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                        base_url=ollama_url,
                     )
                 # Fallback to completion interface
-                print("🤖 Using local Qwen (completion) via Ollama")
+                print("🤖 Using OpenAI ChatGPT (completion) via Ollama")
                 return Ollama(
-                    model="qwen:4b",
+                    model=ollama_model,
                     temperature=temperature,
-                    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                    base_url=ollama_url,
                 )
             except Exception as e:
                 print("⚠️ Exception occurred using Qwen:", e)
