@@ -61,7 +61,7 @@ def analyze_stock():
         worker = threading.Thread(target=_run_graph, daemon=True)
         worker.start()
 
-        timeout_seconds = int(os.getenv('ANALYZE_TIMEOUT_SECS', '90'))
+        timeout_seconds = int(os.getenv('ANALYZE_TIMEOUT_SECS', '300'))
         worker.join(timeout_seconds)
 
         if worker.is_alive():
@@ -150,8 +150,8 @@ def health_check():
 @app.route('/api/models', methods=['GET'])
 def get_available_models():
     return jsonify({
-        'models': ['qwen:4b'],
-        'current_model': 'qwen:4b',
+        'models': ['qwen3:4b'],
+        'current_model': 'qwen3:4b',
         'description': 'Local Ollama Qwen 4B model'
     })
 

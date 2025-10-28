@@ -87,95 +87,88 @@ def analyze_stock():
 
         final_state = payload
 
-        # Handle both dict and State object returns
-        def safe_get(obj, attr, default=None):
-            if isinstance(obj, dict):
-                return obj.get(attr, default)
-            else:
-                return getattr(obj, attr, default)
-
         # Serialize response
         result = {
-            'ticker': safe_get(final_state, 'ticker'),
-            'period': safe_get(final_state, 'period'),
-            'interval': safe_get(final_state, 'interval'),
-            'horizon_days': safe_get(final_state, 'horizon_days'),
+            'ticker': final_state.ticker,
+            'period': final_state.period,
+            'interval': final_state.interval,
+            'horizon_days': final_state.horizon_days,
             'market': (
                 {
-                    'ticker': safe_get(safe_get(final_state, 'market'), 'ticker'),
-                    'period': safe_get(safe_get(final_state, 'market'), 'period'),
-                    'interval': safe_get(safe_get(final_state, 'market'), 'interval'),
-                    'price_csv': safe_get(safe_get(final_state, 'market'), 'price_csv'),
+                    'ticker': final_state.market.ticker,
+                    'period': final_state.market.period,
+                    'interval': final_state.market.interval,
+                    'price_csv': final_state.market.price_csv,
                 }
-                if safe_get(final_state, 'market') else None
+                if getattr(final_state, 'market', None) else None
             ),
             'news': (
                 {
-                    'ticker': safe_get(safe_get(final_state, 'news'), 'ticker'),
-                    'window_days': safe_get(safe_get(final_state, 'news'), 'window_days'),
+                    'ticker': final_state.news.ticker,
+                    'window_days': final_state.news.window_days,
                     'items': [
-                        {'title': safe_get(it, 'title'), 'url': safe_get(it, 'url'), 'published': safe_get(it, 'published')}
-                        for it in (safe_get(safe_get(final_state, 'news'), 'items') or [])
+                        {'title': it.title, 'url': it.url, 'published': it.published}
+                        for it in (final_state.news.items or [])
                     ],
                 }
-                if safe_get(final_state, 'news') else None
+                if getattr(final_state, 'news', None) else None
             ),
             'sentiment': (
                 {
-                    'ticker': safe_get(safe_get(final_state, 'sentiment'), 'ticker'),
-                    'news_items_analyzed': safe_get(safe_get(final_state, 'sentiment'), 'news_items_analyzed'),
-                    'overall_sentiment': safe_get(safe_get(final_state, 'sentiment'), 'overall_sentiment'),
-                    'confidence_score': safe_get(safe_get(final_state, 'sentiment'), 'confidence_score'),
-                    'summary': safe_get(safe_get(final_state, 'sentiment'), 'summary'),
-                    'investment_recommendation': safe_get(safe_get(final_state, 'sentiment'), 'investment_recommendation'),
-                    'key_insights': safe_get(safe_get(final_state, 'sentiment'), 'key_insights'),
-                    'methodology': safe_get(safe_get(final_state, 'sentiment'), 'methodology'),
+                    'ticker': final_state.sentiment.ticker,
+                    'news_items_analyzed': final_state.sentiment.news_items_analyzed,
+                    'overall_sentiment': final_state.sentiment.overall_sentiment,
+                    'confidence_score': final_state.sentiment.confidence_score,
+                    'summary': final_state.sentiment.summary,
+                    'investment_recommendation': final_state.sentiment.investment_recommendation,
+                    'key_insights': final_state.sentiment.key_insights,
+                    'methodology': final_state.sentiment.methodology,
                 }
-                if safe_get(final_state, 'sentiment') else None
+                if getattr(final_state, 'sentiment', None) else None
             ),
             'valuation': (
                 {
-                    'ticker': safe_get(safe_get(final_state, 'valuation'), 'ticker'),
-                    'analysis_period': safe_get(safe_get(final_state, 'valuation'), 'analysis_period'),
-                    'trading_days': safe_get(safe_get(final_state, 'valuation'), 'trading_days'),
-                    'cumulative_return': safe_get(safe_get(final_state, 'valuation'), 'cumulative_return'),
-                    'annualized_return': safe_get(safe_get(final_state, 'valuation'), 'annualized_return'),
-                    'daily_volatility': safe_get(safe_get(final_state, 'valuation'), 'daily_volatility'),
-                    'annualized_volatility': safe_get(safe_get(final_state, 'valuation'), 'annualized_volatility'),
-                    'price_trend': safe_get(safe_get(final_state, 'valuation'), 'price_trend'),
-                    'volatility_regime': safe_get(safe_get(final_state, 'valuation'), 'volatility_regime'),
-                    'valuation_insights': safe_get(safe_get(final_state, 'valuation'), 'valuation_insights'),
-                    'trend_analysis': safe_get(safe_get(final_state, 'valuation'), 'trend_analysis'),
-                    'risk_assessment': safe_get(safe_get(final_state, 'valuation'), 'risk_assessment'),
-                    'methodology': safe_get(safe_get(final_state, 'valuation'), 'methodology'),
+                    'ticker': final_state.valuation.ticker,
+                    'analysis_period': final_state.valuation.analysis_period,
+                    'trading_days': final_state.valuation.trading_days,
+                    'cumulative_return': final_state.valuation.cumulative_return,
+                    'annualized_return': final_state.valuation.annualized_return,
+                    'daily_volatility': final_state.valuation.daily_volatility,
+                    'annualized_volatility': final_state.valuation.annualized_volatility,
+                    'price_trend': final_state.valuation.price_trend,
+                    'volatility_regime': final_state.valuation.volatility_regime,
+                    'valuation_insights': final_state.valuation.valuation_insights,
+                    'trend_analysis': final_state.valuation.trend_analysis,
+                    'risk_assessment': final_state.valuation.risk_assessment,
+                    'methodology': final_state.valuation.methodology,
                 }
-                if safe_get(final_state, 'valuation') else None
+                if getattr(final_state, 'valuation', None) else None
             ),
             'metrics': (
                 {
-                    'ticker': safe_get(safe_get(final_state, 'metrics'), 'ticker'),
-                    'horizon_days': safe_get(safe_get(final_state, 'metrics'), 'horizon_days'),
-                    'annual_vol': safe_get(safe_get(final_state, 'metrics'), 'annual_vol'),
-                    'max_drawdown': safe_get(safe_get(final_state, 'metrics'), 'max_drawdown'),
-                    'daily_var_95': safe_get(safe_get(final_state, 'metrics'), 'daily_var_95'),
-                    'sharpe_like': safe_get(safe_get(final_state, 'metrics'), 'sharpe_like'),
-                    'notes': safe_get(safe_get(final_state, 'metrics'), 'notes'),
-                    'risk_flags': safe_get(safe_get(final_state, 'metrics'), 'risk_flags'),
+                    'ticker': final_state.metrics.ticker,
+                    'horizon_days': final_state.metrics.horizon_days,
+                    'annual_vol': final_state.metrics.annual_vol,
+                    'max_drawdown': final_state.metrics.max_drawdown,
+                    'daily_var_95': final_state.metrics.daily_var_95,
+                    'sharpe_like': final_state.metrics.sharpe_like,
+                    'notes': final_state.metrics.notes,
+                    'risk_flags': final_state.metrics.risk_flags,
                 }
-                if safe_get(final_state, 'metrics') else None
+                if getattr(final_state, 'metrics', None) else None
             ),
             'report': (
                 {
-                    'ticker': safe_get(safe_get(final_state, 'report'), 'ticker'),
-                    'as_of': safe_get(safe_get(final_state, 'report'), 'as_of'),
-                    'summary': safe_get(safe_get(final_state, 'report'), 'summary'),
-                    'key_findings': safe_get(safe_get(final_state, 'report'), 'key_findings'),
-                    'metrics_table': safe_get(safe_get(final_state, 'report'), 'metrics_table'),
-                    'risk_flags': safe_get(safe_get(final_state, 'report'), 'risk_flags'),
-                    'methodology': safe_get(safe_get(final_state, 'report'), 'methodology'),
-                    'markdown_report': safe_get(safe_get(final_state, 'report'), 'markdown_report'),
+                    'ticker': final_state.report.ticker,
+                    'as_of': final_state.report.as_of,
+                    'summary': final_state.report.summary,
+                    'key_findings': final_state.report.key_findings,
+                    'metrics_table': final_state.report.metrics_table,
+                    'risk_flags': final_state.report.risk_flags,
+                    'methodology': final_state.report.methodology,
+                    'markdown_report': final_state.report.markdown_report,
                 }
-                if safe_get(final_state, 'report') else None
+                if getattr(final_state, 'report', None) else None
             ),
         }
 
