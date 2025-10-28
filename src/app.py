@@ -37,13 +37,14 @@ def analyze_stock():
             horizon_days=int(data['horizon_days'])
         )
         
-        # Quick Ollama reachability check (fail fast)
-        try:
-            _ = requests.get(
-                'http://localhost:11434/api/tags', timeout=2
-            )
-        except Exception:
-            return jsonify({'error': 'Ollama is not reachable. Start it with: ollama serve'}), 503
+        # Provider gating: if OpenAI is configured, skip any Ollama checks entirely
+        provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
+        openai_key = os.getenv('OPENAI_API_KEY')
+        use_openai = (provider == 'openai' and openai_key) or (provider == 'auto' and openai_key)
+
+        if not use_openai:
+            # Strict OpenAI-only mode: do not proceed without OpenAI
+            return jsonify({'error': 'OpenAI GPT-4o not configured. Set MODEL_PROVIDER=openai and OPENAI_API_KEY.'}), 503
 
         # Build the graph
         graph = main.build_graph()
@@ -61,7 +62,7 @@ def analyze_stock():
         worker = threading.Thread(target=_run_graph, daemon=True)
         worker.start()
 
-        timeout_seconds = int(os.getenv('ANALYZE_TIMEOUT_SECS', '90'))
+        timeout_seconds = int(os.getenv('ANALYZE_TIMEOUT_SECS', '300'))
         worker.join(timeout_seconds)
 
         if worker.is_alive():
@@ -72,68 +73,74 @@ def analyze_stock():
             raise payload
         final_state = payload
         
+        # Handle both dict and State object responses
+        def safe_get(obj, key, default=None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+        
         # Convert the result to a dictionary
         result = {
-            'ticker': final_state.ticker,
-            'period': final_state.period,
-            'interval': final_state.interval,
-            'horizon_days': final_state.horizon_days,
+            'ticker': safe_get(final_state, 'ticker'),
+            'period': safe_get(final_state, 'period'),
+            'interval': safe_get(final_state, 'interval'),
+            'horizon_days': safe_get(final_state, 'horizon_days'),
             'market': {
-                'ticker': final_state.market.ticker if final_state.market else None,
-                'period': final_state.market.period if final_state.market else None,
-                'interval': final_state.market.interval if final_state.market else None,
-                'price_csv': final_state.market.price_csv if final_state.market else None
-            } if final_state.market else None,
+                'ticker': safe_get(safe_get(final_state, 'market'), 'ticker'),
+                'period': safe_get(safe_get(final_state, 'market'), 'period'),
+                'interval': safe_get(safe_get(final_state, 'market'), 'interval'),
+                'price_csv': safe_get(safe_get(final_state, 'market'), 'price_csv')
+            } if safe_get(final_state, 'market') else None,
             'news': {
-                'ticker': final_state.news.ticker if final_state.news else None,
-                'window_days': final_state.news.window_days if final_state.news else None,
-                'items': [{'title': item.title, 'url': item.url, 'published': item.published} for item in final_state.news.items] if final_state.news and final_state.news.items else []
-            } if final_state.news else None,
+                'ticker': safe_get(safe_get(final_state, 'news'), 'ticker'),
+                'window_days': safe_get(safe_get(final_state, 'news'), 'window_days'),
+                'items': [{'title': safe_get(item, 'title'), 'url': safe_get(item, 'url'), 'published': safe_get(item, 'published')} for item in (safe_get(safe_get(final_state, 'news'), 'items') or [])]
+            } if safe_get(final_state, 'news') else None,
             'sentiment': {
-                'ticker': final_state.sentiment.ticker if final_state.sentiment else None,
-                'news_items_analyzed': final_state.sentiment.news_items_analyzed if final_state.sentiment else 0,
-                'overall_sentiment': final_state.sentiment.overall_sentiment if final_state.sentiment else 'neutral',
-                'confidence_score': final_state.sentiment.confidence_score if final_state.sentiment else 0.0,
-                'summary': final_state.sentiment.summary if final_state.sentiment else '',
-                'investment_recommendation': final_state.sentiment.investment_recommendation if final_state.sentiment else '',
-                'key_insights': final_state.sentiment.key_insights if final_state.sentiment else [],
-                'methodology': final_state.sentiment.methodology if final_state.sentiment else ''
-            } if final_state.sentiment else None,
+                'ticker': safe_get(safe_get(final_state, 'sentiment'), 'ticker'),
+                'news_items_analyzed': safe_get(safe_get(final_state, 'sentiment'), 'news_items_analyzed'),
+                'overall_sentiment': safe_get(safe_get(final_state, 'sentiment'), 'overall_sentiment'),
+                'confidence_score': safe_get(safe_get(final_state, 'sentiment'), 'confidence_score'),
+                'summary': safe_get(safe_get(final_state, 'sentiment'), 'summary'),
+                'investment_recommendation': safe_get(safe_get(final_state, 'sentiment'), 'investment_recommendation'),
+                'key_insights': safe_get(safe_get(final_state, 'sentiment'), 'key_insights'),
+                'methodology': safe_get(safe_get(final_state, 'sentiment'), 'methodology')
+            } if safe_get(final_state, 'sentiment') else None,
             'valuation': {
-                'ticker': final_state.valuation.ticker if final_state.valuation else None,
-                'analysis_period': final_state.valuation.analysis_period if final_state.valuation else None,
-                'trading_days': final_state.valuation.trading_days if final_state.valuation else 0,
-                'cumulative_return': final_state.valuation.cumulative_return if final_state.valuation else 0.0,
-                'annualized_return': final_state.valuation.annualized_return if final_state.valuation else 0.0,
-                'daily_volatility': final_state.valuation.daily_volatility if final_state.valuation else 0.0,
-                'annualized_volatility': final_state.valuation.annualized_volatility if final_state.valuation else 0.0,
-                'price_trend': final_state.valuation.price_trend if final_state.valuation else 'neutral',
-                'volatility_regime': final_state.valuation.volatility_regime if final_state.valuation else 'medium',
-                'valuation_insights': final_state.valuation.valuation_insights if final_state.valuation else [],
-                'trend_analysis': final_state.valuation.trend_analysis if final_state.valuation else '',
-                'risk_assessment': final_state.valuation.risk_assessment if final_state.valuation else '',
-                'methodology': final_state.valuation.methodology if final_state.valuation else ''
-            } if final_state.valuation else None,
+                'ticker': safe_get(safe_get(final_state, 'valuation'), 'ticker'),
+                'analysis_period': safe_get(safe_get(final_state, 'valuation'), 'analysis_period'),
+                'trading_days': safe_get(safe_get(final_state, 'valuation'), 'trading_days'),
+                'cumulative_return': safe_get(safe_get(final_state, 'valuation'), 'cumulative_return'),
+                'annualized_return': safe_get(safe_get(final_state, 'valuation'), 'annualized_return'),
+                'daily_volatility': safe_get(safe_get(final_state, 'valuation'), 'daily_volatility'),
+                'annualized_volatility': safe_get(safe_get(final_state, 'valuation'), 'annualized_volatility'),
+                'price_trend': safe_get(safe_get(final_state, 'valuation'), 'price_trend'),
+                'volatility_regime': safe_get(safe_get(final_state, 'valuation'), 'volatility_regime'),
+                'valuation_insights': safe_get(safe_get(final_state, 'valuation'), 'valuation_insights'),
+                'trend_analysis': safe_get(safe_get(final_state, 'valuation'), 'trend_analysis'),
+                'risk_assessment': safe_get(safe_get(final_state, 'valuation'), 'risk_assessment'),
+                'methodology': safe_get(safe_get(final_state, 'valuation'), 'methodology')
+            } if safe_get(final_state, 'valuation') else None,
             'metrics': {
-                'ticker': final_state.metrics.ticker if final_state.metrics else None,
-                'horizon_days': final_state.metrics.horizon_days if final_state.metrics else 0,
-                'annual_vol': final_state.metrics.annual_vol if final_state.metrics else 0.0,
-                'max_drawdown': final_state.metrics.max_drawdown if final_state.metrics else 0.0,
-                'daily_var_95': final_state.metrics.daily_var_95 if final_state.metrics else 0.0,
-                'sharpe_like': final_state.metrics.sharpe_like if final_state.metrics else None,
-                'notes': final_state.metrics.notes if final_state.metrics else [],
-                'risk_flags': final_state.metrics.risk_flags if final_state.metrics else []
-            } if final_state.metrics else None,
+                'ticker': safe_get(safe_get(final_state, 'metrics'), 'ticker'),
+                'horizon_days': safe_get(safe_get(final_state, 'metrics'), 'horizon_days'),
+                'annual_vol': safe_get(safe_get(final_state, 'metrics'), 'annual_vol'),
+                'max_drawdown': safe_get(safe_get(final_state, 'metrics'), 'max_drawdown'),
+                'daily_var_95': safe_get(safe_get(final_state, 'metrics'), 'daily_var_95'),
+                'sharpe_like': safe_get(safe_get(final_state, 'metrics'), 'sharpe_like'),
+                'notes': safe_get(safe_get(final_state, 'metrics'), 'notes'),
+                'risk_flags': safe_get(safe_get(final_state, 'metrics'), 'risk_flags')
+            } if safe_get(final_state, 'metrics') else None,
             'report': {
-                'ticker': final_state.report.ticker if final_state.report else None,
-                'as_of': final_state.report.as_of if final_state.report else '',
-                'summary': final_state.report.summary if final_state.report else '',
-                'key_findings': final_state.report.key_findings if final_state.report else [],
-                'metrics_table': final_state.report.metrics_table if final_state.report else {},
-                'risk_flags': final_state.report.risk_flags if final_state.report else [],
-                'methodology': final_state.report.methodology if final_state.report else '',
-                'markdown_report': final_state.report.markdown_report if final_state.report else ''
-            } if final_state.report else None
+                'ticker': safe_get(safe_get(final_state, 'report'), 'ticker'),
+                'as_of': safe_get(safe_get(final_state, 'report'), 'as_of'),
+                'summary': safe_get(safe_get(final_state, 'report'), 'summary'),
+                'key_findings': safe_get(safe_get(final_state, 'report'), 'key_findings'),
+                'metrics_table': safe_get(safe_get(final_state, 'report'), 'metrics_table'),
+                'risk_flags': safe_get(safe_get(final_state, 'report'), 'risk_flags'),
+                'methodology': safe_get(safe_get(final_state, 'report'), 'methodology'),
+                'markdown_report': safe_get(safe_get(final_state, 'report'), 'markdown_report')
+            } if safe_get(final_state, 'report') else None
         }
         
         return jsonify(result)
@@ -149,14 +156,35 @@ def health_check():
 
 @app.route('/api/models', methods=['GET'])
 def get_available_models():
+    provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
+    openai_key = os.getenv('OPENAI_API_KEY')
+    if provider == 'auto':
+        provider = 'openai' if openai_key else 'ollama'
+
+    if provider == 'openai':
+        current_model = os.getenv('OPENAI_MODEL', 'gpt-4o')
+        description = 'OpenAI GPT model'
+        models = [current_model]
+    else:
+        current_model = os.getenv('OLLAMA_MODEL', 'qwen3:4b')
+        description = 'Local Ollama model'
+        models = [current_model]
+
     return jsonify({
-        'models': ['qwen:4b'],
-        'current_model': 'qwen:4b',
-        'description': 'Local Ollama Qwen 4B model'
+        'provider': provider,
+        'models': models,
+        'current_model': current_model,
+        'description': description
     })
 
 if __name__ == '__main__':
     print("🚀 Starting Finance Risk Analysis API...")
     print("📊 Multi-Agent System Ready")
-    print("🤖 Using Local Ollama Qwen:4b Model")
+    provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
+    openai_key = os.getenv('OPENAI_API_KEY')
+    effective_provider = 'openai' if (provider == 'openai' and openai_key) or (provider == 'auto' and openai_key) else 'ollama'
+    if effective_provider == 'openai':
+        print(f"🤖 Using OpenAI model: {os.getenv('OPENAI_MODEL', 'gpt-4o')}")
+    else:
+        print(f"🤖 Using Ollama model: {os.getenv('OLLAMA_MODEL', 'qwen3:4b')}")
     app.run(debug=True, host='0.0.0.0', port=5001)

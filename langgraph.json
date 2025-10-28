@@ -1,0 +1,15 @@
+{
+  "$schema": "https://langchain-ai.github.io/langgraph/schemas/langgraph.schema.json",
+  "graphs": [
+    {
+      "name": "chain",
+      "entrypoint": "src/main.py:build_chain_graph",
+      "description": "Original sequential pipeline for finance risk analysis."
+    },
+    {
+      "name": "debate",
+      "entrypoint": "src/debate_agents.py:build_debate_graph",
+      "description": "Leader-led debate workflow that consults each specialist twice."
+    }
+  ]
+}
