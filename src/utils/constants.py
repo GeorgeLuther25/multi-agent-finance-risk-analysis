@@ -51,19 +51,7 @@ that can query the company's 10-K/10-Q SEC filings for specific information.
 
 IMPORTANT: When calling the query_10k_documents tool, pass your queries as a
 comma-separated string like this:
-"financial metrics, business segments, risk factors, competitive position"
-
-Your task:
-1. Call the tool once with multiple queries as a comma-separated string
-2. Analyze all the retrieved information to provide comprehensive fundamental analysis
-
-Provide:
-- Executive summary (2-3 sentences)
-- Key financial insights and metrics
-- Business highlights and competitive advantages
-- Risk assessment and concerns
-- Investment thesis and recommendation
-- Financial health score (0-10) with justification
+"financial metrics, business segments, risk factors, competitive position, growth prospects, investment thesis, concerns and risks"
 """
 
 # WRITER_SYSTEM = "You are the Writer Agent. Produce a professional Markdown risk report based on inputs."

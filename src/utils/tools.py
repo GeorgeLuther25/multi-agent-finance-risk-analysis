@@ -378,7 +378,7 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
         Returns list of results corresponding to each query
     """
     try:
-        from .rag_utils import FundamentalRAG
+        from utils.rag_utils import FundamentalRAG
         import ast
         
         # Initialize RAG system

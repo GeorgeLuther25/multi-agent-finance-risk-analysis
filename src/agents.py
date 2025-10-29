@@ -251,9 +251,13 @@ def sentiment_agent(state: State, config: RunnableConfig):
     
     print(f"analysis_content is: {analysis_content}")
     analysis, structured_data = parse_agent_response(analysis_content)
-    structured_data["summary"] = analysis_content
-    print(f"structured_data type is: {type(structured_data)}. Vlaue is: {structured_data}")
-    sentiment_summary = SentimentSummary(**structured_data)
+    if len(structured_data) > 0:
+        structured_data["summary"] = analysis_content
+        print(f"structured_data type is: {type(structured_data)}. Vlaue is: {structured_data}")
+        sentiment_summary = SentimentSummary(**structured_data)
+    else:
+        print("🚫 No data in parsed structured_data.")
+        sentiment_summary = SentimentSummary()
     
     new_state = State(
         ticker=state.ticker,
@@ -306,25 +310,29 @@ def fundamental_agent(state: State, config: RunnableConfig):
         # Create agent with tools
         llm = get_llm()
         fundamental_agent = create_react_agent(llm, [query_10k_documents], prompt=(FUNDAMENTAL_SYSTEM))
+        analysis_content = ""
         
         # Execute the agent
         try:
             query_msg = (
-                f"""
-                Please analyze {state.ticker} using the 10-K/10-Q documents. Return a compact JSON object using this schema:
-                {{
-                "executive_summary": "...",
-                "key_financial_metrics": {{"metric": "value", "...": "..."}},
-                "business_highlights": ["..."],
-                "risk_factors": ["..."],
-                "competitive_position": "...",
-                "growth_prospects": "...",
-                "financial_health_score": 0.0,
-                "investment_thesis": "...",
-                "concerns_and_risks": ["..."]
-                }}
-                Ensure the response is valid JSON and keep numeric scores between 0 and 10.
-                """
+    f"""
+    Please analyze {state.ticker} using the 10-K/10-Q documents.
+    IMPORTANT: Also include the structured json data like the example below, with its values replaced by your analyzed results, and the exact text STRUCTURED DATA. Ensure the response is valid JSON and keep numeric scores between 0 and 10.
+    STRUCTURED DATA
+    ```json
+    {{
+        "executive_summary": "...",
+        "key_financial_metrics": {{"metric": "value", "...": "..."}},
+        "business_highlights": ["..."],
+        "risk_factors": ["..."],
+        "competitive_position": "...",
+        "growth_prospects": "...",
+        "financial_health_score": financial health score here,
+        "investment_thesis": "...",
+        "concerns_and_risks": ["..."]
+    }}
+    ```
+    """
             )
             result = fundamental_agent.invoke({"messages": [("human", query_msg)]})
             # Extract the last message content from the result
@@ -335,55 +343,22 @@ def fundamental_agent(state: State, config: RunnableConfig):
         except Exception as e:
             print(f"query_10k_documents invocation failed: {e}")
 
-        parsed = {}
-        if analysis_content:
-            try:
-                parsed = json.loads(analysis_content)
-            except json.JSONDecodeError:
-                print("Fundamental analysis did not return JSON; using fallback text.")
-
+        _, structured_data = parse_agent_response(analysis_content)
         filing_info = available_filings[0]
+        if len(structured_data) > 0:
+            # Create structured fundamental analysis
+            fundamental_analysis = FundamentalAnalysis(
+                ticker=state.ticker,
+                filing_type=filing_info.get("filing_type", "10-K"),
+                filing_date=filing_info.get("ingestion_date", "Unknown"),
+                analysis_date=datetime.now().strftime("%Y-%m-%d"),
+                **structured_data,
+                methodology="RAG-enhanced 10-K/10-Q document analysis"
+            )
+        else:
+            print("🚫 No data in parsed structured_data.")
+            fundamental_analysis = FundamentalAnalysis()
 
-        executive_summary = parsed.get("executive_summary") if isinstance(parsed, dict) else None
-        key_metrics = parsed.get("key_financial_metrics") if isinstance(parsed, dict) else None
-        business_highlights = parsed.get("business_highlights") if isinstance(parsed, dict) else None
-        risk_factors = parsed.get("risk_factors") if isinstance(parsed, dict) else None
-        competitive_position = parsed.get("competitive_position") if isinstance(parsed, dict) else None
-        growth_prospects = parsed.get("growth_prospects") if isinstance(parsed, dict) else None
-        investment_thesis = parsed.get("investment_thesis") if isinstance(parsed, dict) else None
-        concerns_and_risks = parsed.get("concerns_and_risks") if isinstance(parsed, dict) else None
-
-        try:
-            score = float(parsed.get("financial_health_score", 6.5)) if isinstance(parsed, dict) else 6.5
-        except (TypeError, ValueError):
-            score = 6.5
-        score = min(max(score, 0.0), 10.0)
-
-        filing_info = available_filings[0]
-        
-        # Create structured fundamental analysis
-        fundamental_analysis = FundamentalAnalysis(
-            ticker=state.ticker,
-            filing_type=filing_info.get("filing_type", "10-K"),
-            filing_date=filing_info.get("ingestion_date", "Unknown"),
-            analysis_date=datetime.now().strftime("%Y-%m-%d"),
-            executive_summary=executive_summary or analysis_content or "Fundamental analysis generated without structured details.",
-            key_financial_metrics=key_metrics if isinstance(key_metrics, dict) else {"summary": analysis_content or "No metrics extracted."},
-            business_highlights=business_highlights if isinstance(business_highlights, list) else [
-                "Automated summary from SEC filings"
-            ],
-            risk_factors=risk_factors if isinstance(risk_factors, list) else [
-                "Risk factors could not be parsed from filings."
-            ],
-            competitive_position=competitive_position or "Competitive positioning insights were inferred from filings.",
-            growth_prospects=growth_prospects or "Growth outlook inferred from available filing excerpts.",
-            financial_health_score=score,
-            investment_thesis=investment_thesis or f"Analysis synthesized from {state.ticker}'s SEC filings.",
-            concerns_and_risks=concerns_and_risks if isinstance(concerns_and_risks, list) else [
-                "Further review of filings recommended."
-            ],
-            methodology="RAG-enhanced 10-K/10-Q document analysis"
-        )
     
     new_state = State(
         ticker=state.ticker,

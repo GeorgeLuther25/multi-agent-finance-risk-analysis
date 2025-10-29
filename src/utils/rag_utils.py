@@ -16,7 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-from config import get_llm, get_embeddings
+from utils.config import get_llm, get_embeddings
 
 
 class FundamentalRAG:
