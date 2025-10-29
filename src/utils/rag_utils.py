@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableConfig
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from .config import get_llm, get_embeddings
+
+from config import get_llm, get_embeddings
 
 
 class FundamentalRAG:
