@@ -3,7 +3,7 @@
 
 Advanced multi-agent system for comprehensive financial analysis using LangChain, RAG (Retrieval-Augmented Generation), and real-time data. Analyzes stocks through sentiment analysis, fundamental analysis using 10-K/10-Q filings, technical analysis, and risk assessment.
 
-## 📁 Project Structure
+<!-- ## 📁 Project Structure
 
 ```
 multi-agent-finance-risk-analysis/
@@ -34,7 +34,7 @@ multi-agent-finance-risk-analysis/
 │   ├── sample_filings/           # Sample text files (auto-created)
 │   └── filings/                  # Your PDF documents (create manually)
 └── .venv/                        # Virtual environment (auto-created)
-```
+``` -->
 
 ## 🚀 Agent Workflow
 
@@ -105,7 +105,8 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 ```bash
 python -m pip install -U pip
-python -m pip install -r requirements.txt
+# python -m pip install -r requirements.txt
+bash setup.sh
 ```
 
 ### 4. Setting up Ollama (Free Local Models)
@@ -210,14 +211,27 @@ os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 ## �� Running the System
 
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Run the multi-agent system
-python -m src.main
+# In one terminal, start ollama service
+ollama serve
 ```
 
-## 📊 What You'll See
+```bash
+# In another terminal, activate virtual environment & run backend
+source .venv/bin/activate
+python -m backend.app
+
+# # Run the multi-agent system
+# python -m src.main
+```
+
+```bash
+# In another terminal, activate virtual environment & run frontend
+source .venv/bin/activate
+cd frontend
+npm start
+```
+
+<!-- ## 📊 What You'll See
 
 ### Console Output
 
@@ -301,7 +315,7 @@ results = rag.retrieve_relevant_chunks("AAPL", "revenue growth analysis")
 # Process results
 for chunk in results:
     print(chunk.page_content)
-```
+``` -->
 
 ## 📚 Additional Documentation
 
