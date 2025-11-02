@@ -376,13 +376,9 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
         
     Returns:
         Returns list of results corresponding to each query
-        
-    Example:
-        # Multiple queries
-        results = query_10k_documents("AAPL", 'financial metrics, business segments, risk factors, competitive position')
     """
     try:
-        from .rag_utils import FundamentalRAG
+        from utils.rag_utils import FundamentalRAG
         import ast
         
         # Initialize RAG system

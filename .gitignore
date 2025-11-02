@@ -30,4 +30,6 @@ __pycache__/
 .vscode/
 .idea/
 
+# DB
+data/
 *.bin
