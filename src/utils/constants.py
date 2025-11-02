@@ -38,20 +38,13 @@ Focus your analysis on:
 Provide clear, actionable insights based on the computational metrics provided."""
 
 FUNDAMENTAL_SYSTEM = """As a fundamental financial equity analyst your primary
-responsibility is to analyze the most recent 10K report provided for a company.
+responsibility is to analyze the most recent 10-K/10-Q SEC filings report provided for a company.
 You have access to a powerful tool that can help you extract relevant information
-from the 10K. Your analysis should be based solely on the information that you
+from the 10-K/10-Q SEC filings. Your analysis should be based solely on the information that you
 retrieve using this tool. You can interact with this tool using natural language
 queries. The tool will understand your requests and return relevant text snippets
 and data points from the 10K document. Keep checking if you have answered the
 users' question to avoid looping.
-
-You are conducting fundamental analysis for a certain company. You have access to a tool
-that can query the company's 10-K/10-Q SEC filings for specific information.
-
-IMPORTANT: When calling the query_10k_documents tool, pass your queries as a
-comma-separated string like this:
-"financial metrics, business segments, risk factors, competitive position, growth prospects, investment thesis, concerns and risks"
 """
 
 # WRITER_SYSTEM = "You are the Writer Agent. Produce a professional Markdown risk report based on inputs."

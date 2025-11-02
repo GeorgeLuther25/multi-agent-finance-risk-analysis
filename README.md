@@ -231,6 +231,11 @@ cd frontend
 npm start
 ```
 
+## Saving 10K/10Q Documents
+New 10K/10Q documents must be stored in data/filings directory in `ticker-filing_type-filing_freq-filing_start_month-filing_end_month-filing_year.pdf` format.
+
+E.g. AAPL-10Q-Q3-4-6-2025.pdf
+
 <!-- ## 📊 What You'll See
 
 ### Console Output

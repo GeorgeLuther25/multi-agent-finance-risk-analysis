@@ -12,7 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
 from utils.config import get_llm
-from utils.tools import get_price_history, get_recent_news, query_10k_documents
+from utils.tools import get_price_history, get_recent_news, query_10k_documents, period_to_months_range
 from utils.constants import RISK_SYSTEM, SENTIMENT_SYSTEM, VALUATION_SYSTEM, FUNDAMENTAL_SYSTEM
 from utils.schemas import (
     MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport,
@@ -307,6 +307,8 @@ def fundamental_agent(state: State, config: RunnableConfig):
             methodology="RAG-enhanced 10-K/10-Q document analysis"
         )
     else:
+        from_year, from_month, to_year, to_month = period_to_months_range(state.period)
+
         # Create agent with tools
         llm = get_llm()
         fundamental_agent = create_react_agent(llm, [query_10k_documents], prompt=(FUNDAMENTAL_SYSTEM))
@@ -316,7 +318,8 @@ def fundamental_agent(state: State, config: RunnableConfig):
         try:
             query_msg = (
     f"""
-    Please analyze {state.ticker} using the 10-K/10-Q documents.
+    Please analyze {state.ticker} using the 10-K/10-Q documents from month:{from_month}, year:{from_year} to month:{to_month}, year:{to_year}.
+    When calling the query_10k_documents tool, pass your queries as a comma-separated string like this: "financial metrics, business segments, risk factors, competitive position, growth prospects, investment thesis, concerns and risks"
     IMPORTANT: Also include the structured json data like the example below, with its values replaced by your analyzed results, and the exact text STRUCTURED DATA. Ensure the response is valid JSON and keep numeric scores between 0 and 10.
     STRUCTURED DATA
     ```json
