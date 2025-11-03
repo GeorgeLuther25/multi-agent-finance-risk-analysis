@@ -31,5 +31,5 @@ __pycache__/
 .idea/
 
 # DB
-data/
+data/chroma_db
 *.bin
