@@ -123,7 +123,7 @@ def data_agent(state: State, config: RunnableConfig):
     # llm = get_llm()
     # _ = llm.invoke([SystemMessage(content=DATA_SYSTEM), HumanMessage(content=f"ticker={state.ticker}")])  # no-op, just for tracing
     price_csv = get_price_history.invoke({"ticker": state.ticker, "period": state.period, "interval": state.interval})
-    news_raw = get_recent_news.invoke({"ticker": state.ticker, "days": min(14, state.horizon_days)})
+    news_raw = get_recent_news.invoke({"ticker": state.ticker, "period": state.period})
     items = []
     try:
         for r in ast.literal_eval(news_raw):

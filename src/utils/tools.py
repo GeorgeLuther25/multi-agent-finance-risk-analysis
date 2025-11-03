@@ -27,9 +27,16 @@ except ImportError:
     print("⚠️  newspaper3k not available. Install with: pip install newspaper3k")
 
 @tool("get_price_history")
-def get_price_history(ticker: str, period: str = "1y", interval: str = "1d") -> str:
+def get_price_history(ticker: str, period: str = "1y", interval: str = "1d", end_date: datetime = None) -> str:
     """Returns price history CSV for ticker using yfinance."""
-    df = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
+    start_date, end_date = period_to_datetime_range(period, end_date)
+    # Format dates for yfinance (YYYY-MM-DD)
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    
+    print(f"📊 Fetching {ticker} price data from {start_str} to {end_str}")
+    df = yf.download(ticker, start=start_str, end=end_str, interval=interval, 
+                    auto_adjust=False, progress=False)
     if df.empty:
         return f"ERROR: No data for {ticker}."
     
@@ -51,7 +58,7 @@ def get_price_history(ticker: str, period: str = "1y", interval: str = "1d") -> 
     return df.to_csv(index=False)
 
 @tool("get_recent_news")
-def get_recent_news(ticker: str, days: int = 14) -> str:
+def get_recent_news(ticker: str, period: str = "14d", end_date: datetime = None) -> str:
     # """Stub news. Replace with your provider later."""
     # cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
     # samples = [
@@ -71,27 +78,25 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
         print("   Get your free API key at: https://polygon.io/")
         print("   Set it with: export POLYGON_API_KEY='your-key-here'")
         # Fallback to synthetic news
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return _generate_synthetic_news(ticker, cutoff_date)
+        return _generate_synthetic_news(ticker, datetime.now())
     
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        news_items = _get_polygon_news_with_content(ticker, polygon_key, cutoff_date)
+        cutoff_date, end_date = period_to_datetime_range(period, end_date)
+        news_items = _get_polygon_news_with_content(ticker, polygon_key, cutoff_date, end_date)
         
         if not news_items:
             print(f"⚠️  No recent news found for {ticker} from Polygon.io. Using fallback.")
-            news_items = _generate_synthetic_news(ticker, cutoff_date)
+            news_items = _generate_synthetic_news(ticker, datetime.now())
         
         # Sort by date (most recent first) and limit results
-        news_items: List[Dict[str, Any]] = sorted(news_items, key=lambda x: x['date'], reverse=True)[:8]
+        news_items: List[Dict[str, Any]] = sorted(news_items, key=lambda x: x['date'], reverse=True)
         # print("News items are:", news_items)
         return str(news_items)
         # return news_items
         
     except Exception as e:
         print(f"❌ Error fetching news for {ticker}: {e}")
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return _generate_synthetic_news(ticker, cutoff_date)
+        return _generate_synthetic_news(ticker, datetime.now())
 
 
 def _extract_url_content(url: str, max_length: int = 4000) -> str:
@@ -216,7 +221,7 @@ def _extract_url_content(url: str, max_length: int = 4000) -> str:
     return ""
 
 
-def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
+def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
     """
     Get recent news from Polygon.io with enhanced content extraction.
     Now extracts full article content from URLs when available.
@@ -225,14 +230,16 @@ def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datet
         print(f"� Fetching Polygon.io news for {ticker}...")
         # Format date for Polygon API (YYYY-MM-DD)
         from_date = cutoff_date.strftime('%Y-%m-%d')
+        to_date = end_date.strftime('%Y-%m-%d')
         
         # Construct API request
         base_url = "https://api.polygon.io/v2/reference/news"
         params = {
             'ticker': ticker,
             'published_utc.gte': from_date,
+            'published_utc.lte': to_date,
             'order': 'desc',
-            'limit': 10,
+            'limit': 6,
             'apikey': api_key
         }
         
@@ -243,7 +250,7 @@ def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datet
             if 'results' in data and data['results']:
                 news_items = []
                 
-                for article in data['results'][:5]:  # Limit to 5 articles for processing
+                for article in data['results']:
                     try:
                         # Extract basic info
                         title = article.get('title', 'No title')
