@@ -29,3 +29,7 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# DB
+data/chroma_db
+*.bin

@@ -36,14 +36,14 @@ class RiskMetrics(BaseModel):
 
 
 class SentimentSummary(BaseModel):
-    ticker: str
-    news_items_analyzed: int
-    overall_sentiment: Literal["bullish", "bearish", "neutral"]
-    confidence_score: float = Field(ge=0.0, le=1.0)
-    summary: str
-    investment_recommendation: str
-    key_insights: List[str] = Field(default_factory=list)
-    methodology: str = "LLM-based reflection-enhanced summarization"
+    ticker: str = ""
+    news_items_analyzed: int = 0
+    overall_sentiment: str = ""
+    confidence_score: float = 0
+    summary: str = ""
+    investment_recommendation: str = ""
+    key_insights: List[str] = []
+    methodology: str = ""
 
 
 class ValuationMetrics(BaseModel):
@@ -74,19 +74,19 @@ class RiskReport(BaseModel):
 
 
 class FundamentalAnalysis(BaseModel):
-    ticker: str
-    filing_type: str  # "10-K" or "10-Q"
-    filing_date: str
-    analysis_date: str
-    executive_summary: str
-    key_financial_metrics: Dict[str, Any]
-    business_highlights: List[str]
-    risk_factors: List[str]
-    competitive_position: str
-    growth_prospects: str
-    financial_health_score: float = Field(ge=0.0, le=10.0)
-    investment_thesis: str
-    concerns_and_risks: List[str]
+    ticker: str = ""
+    filing_type: str = ""  # "10-K" or "10-Q"
+    filing_date: str = ""
+    analysis_date: str = ""
+    executive_summary: str = ""
+    key_financial_metrics: Dict[str, Any] = {}
+    business_highlights: List[str] = []
+    risk_factors: List[str] = []
+    competitive_position: str = ""
+    growth_prospects: str = ""
+    financial_health_score: float = 0
+    investment_thesis: str = ""
+    concerns_and_risks: List[str] = []
     methodology: str = "RAG-enhanced 10-K/10-Q document analysis"
 
 # Debate

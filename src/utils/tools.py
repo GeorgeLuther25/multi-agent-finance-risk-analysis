@@ -4,8 +4,9 @@ import requests
 import json
 import re
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Any, Union
-from langchain.tools import tool
+from langchain_core.tools import tool
 from textblob import TextBlob
 import warnings
 warnings.filterwarnings("ignore")
@@ -26,9 +27,16 @@ except ImportError:
     print("⚠️  newspaper3k not available. Install with: pip install newspaper3k")
 
 @tool("get_price_history")
-def get_price_history(ticker: str, period: str = "1y", interval: str = "1d") -> str:
+def get_price_history(ticker: str, period: str = "1y", interval: str = "1d", end_date: datetime = None) -> str:
     """Returns price history CSV for ticker using yfinance."""
-    df = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
+    start_date, end_date = period_to_datetime_range(period, end_date)
+    # Format dates for yfinance (YYYY-MM-DD)
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    
+    print(f"📊 Fetching {ticker} price data from {start_str} to {end_str}")
+    df = yf.download(ticker, start=start_str, end=end_str, interval=interval, 
+                    auto_adjust=False, progress=False)
     if df.empty:
         return f"ERROR: No data for {ticker}."
     
@@ -50,7 +58,7 @@ def get_price_history(ticker: str, period: str = "1y", interval: str = "1d") -> 
     return df.to_csv(index=False)
 
 @tool("get_recent_news")
-def get_recent_news(ticker: str, days: int = 14) -> str:
+def get_recent_news(ticker: str, period: str = "14d", end_date: datetime = None) -> str:
     # """Stub news. Replace with your provider later."""
     # cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
     # samples = [
@@ -70,27 +78,25 @@ def get_recent_news(ticker: str, days: int = 14) -> str:
         print("   Get your free API key at: https://polygon.io/")
         print("   Set it with: export POLYGON_API_KEY='your-key-here'")
         # Fallback to synthetic news
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return _generate_synthetic_news(ticker, cutoff_date)
+        return _generate_synthetic_news(ticker, datetime.now())
     
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        news_items = _get_polygon_news_with_content(ticker, polygon_key, cutoff_date)
+        cutoff_date, end_date = period_to_datetime_range(period, end_date)
+        news_items = _get_polygon_news_with_content(ticker, polygon_key, cutoff_date, end_date)
         
         if not news_items:
             print(f"⚠️  No recent news found for {ticker} from Polygon.io. Using fallback.")
-            news_items = _generate_synthetic_news(ticker, cutoff_date)
+            news_items = _generate_synthetic_news(ticker, datetime.now())
         
         # Sort by date (most recent first) and limit results
-        news_items: List[Dict[str, Any]] = sorted(news_items, key=lambda x: x['date'], reverse=True)[:8]
+        news_items: List[Dict[str, Any]] = sorted(news_items, key=lambda x: x['date'], reverse=True)
         # print("News items are:", news_items)
         return str(news_items)
         # return news_items
         
     except Exception as e:
         print(f"❌ Error fetching news for {ticker}: {e}")
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        return _generate_synthetic_news(ticker, cutoff_date)
+        return _generate_synthetic_news(ticker, datetime.now())
 
 
 def _extract_url_content(url: str, max_length: int = 4000) -> str:
@@ -215,7 +221,7 @@ def _extract_url_content(url: str, max_length: int = 4000) -> str:
     return ""
 
 
-def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datetime) -> List[Dict[str, Any]]:
+def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
     """
     Get recent news from Polygon.io with enhanced content extraction.
     Now extracts full article content from URLs when available.
@@ -224,14 +230,16 @@ def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datet
         print(f"� Fetching Polygon.io news for {ticker}...")
         # Format date for Polygon API (YYYY-MM-DD)
         from_date = cutoff_date.strftime('%Y-%m-%d')
+        to_date = end_date.strftime('%Y-%m-%d')
         
         # Construct API request
         base_url = "https://api.polygon.io/v2/reference/news"
         params = {
             'ticker': ticker,
             'published_utc.gte': from_date,
+            'published_utc.lte': to_date,
             'order': 'desc',
-            'limit': 10,
+            'limit': 6,
             'apikey': api_key
         }
         
@@ -242,7 +250,7 @@ def _get_polygon_news_with_content(ticker: str, api_key: str, cutoff_date: datet
             if 'results' in data and data['results']:
                 news_items = []
                 
-                for article in data['results'][:5]:  # Limit to 5 articles for processing
+                for article in data['results']:
                     try:
                         # Extract basic info
                         title = article.get('title', 'No title')
@@ -366,23 +374,23 @@ def _generate_synthetic_news(ticker: str, cutoff_date: datetime) -> List[Dict[st
 
 
 @tool
-def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
+def query_10k_documents(ticker: str, query: str, from_month: int, from_year: int, to_month: int, to_year: int) -> Union[str, List[str]]:
     """
     Query 10-K/10-Q documents using RAG to find specific information.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
         query: Single query string to search for in the documents, which gets converted to list.
+        from_month: Start month of the query in integer.
+        from_year: Start year of the query in integer.
+        to_month: End month of the query in integer.
+        to_year: End year of the query in integer.
         
     Returns:
         Returns list of results corresponding to each query
-        
-    Example:
-        # Multiple queries
-        results = query_10k_documents("AAPL", 'financial metrics, business segments, risk factors, competitive position')
     """
     try:
-        from .rag_utils import FundamentalRAG
+        from utils.rag_utils import FundamentalRAG
         import ast
         
         # Initialize RAG system
@@ -396,7 +404,8 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
             # Multiple queries - return list of results
             results = []
             for q in query_list:
-                chunks = rag_system.retrieve_relevant_chunks(ticker, q)
+                chunks = rag_system.retrieve_relevant_chunks(ticker, q, from_year=from_year, from_month=from_month,
+                                                             to_year=to_year, to_month=to_month)
                 if chunks:
                     # Format chunks into readable text
                     result = "\n---DOCUMENT SECTION---\n".join([
@@ -411,3 +420,80 @@ def query_10k_documents(ticker: str, query: str) -> Union[str, List[str]]:
             
     except Exception as e:
         return f"Error querying documents: {str(e)}"
+
+####################### For datetime conversion #######################
+def period_to_datetime_range(period: str, end_date: datetime = None) -> tuple[datetime, datetime]:
+    """
+    Convert a period string (e.g., "3mo", "1y", "6d") to a datetime range.
+    
+    Args:
+        period: Period string like "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
+        end_date: End date for the range (defaults to current datetime)
+        
+    Returns:
+        tuple: (start_datetime, end_datetime)
+    """
+    if end_date is None:
+        end_date = datetime.now()
+    
+    if period.lower() == "max":
+        # Return a very old date for "max" period
+        start_date = datetime(1970, 1, 1)
+        return start_date, end_date
+    
+    # Parse the period string using regex
+    match = re.match(r'^(\d+)([a-zA-Z]+)$', period.lower())
+    if not match:
+        raise ValueError(f"Invalid period format: {period}. Expected format like '1d', '3mo', '1y'")
+    
+    value = int(match.group(1))
+    unit = match.group(2)
+    
+    # Calculate start date based on unit
+    if unit in ['d', 'day', 'days']:
+        start_date = end_date - timedelta(days=value)
+    elif unit in ['w', 'wk', 'week', 'weeks']:
+        start_date = end_date - timedelta(weeks=value)
+    elif unit in ['mo', 'month', 'months']:
+        start_date = end_date - relativedelta(months=value)
+    elif unit in ['y', 'yr', 'year', 'years']:
+        start_date = end_date - relativedelta(years=value)
+    else:
+        raise ValueError(f"Unsupported time unit: {unit}. Supported units: d, w, mo, y")
+    
+    return start_date, end_date
+
+def period_to_months_range(period: str, end_year: int = None, end_month: int = None) -> tuple[int, int, int, int]:
+    """
+    Convert a period string to year/month range for database filtering.
+    
+    Args:
+        period: Period string like "3mo", "1y", etc.
+        end_year: End year (defaults to current year)
+        end_month: End month (defaults to current month)
+        
+    Returns:
+        tuple: (from_year, from_month, to_year, to_month)
+    """
+    if end_year is None:
+        end_year = datetime.now().year
+    if end_month is None:
+        end_month = datetime.now().month
+    
+    start_date, end_date = period_to_datetime_range(period, datetime(end_year, end_month, 1))
+    
+    return start_date.year, start_date.month, end_date.year, end_date.month
+
+# # Alternative simpler function for just getting start datetime
+# def subtract_period_from_now(period: str) -> datetime:
+#     """
+#     Subtract a period from the current datetime.
+    
+#     Args:
+#         period: Period string like "3mo", "1y", "30d"
+        
+#     Returns:
+#         datetime: Current datetime minus the specified period
+#     """
+#     start_date, _ = period_to_datetime_range(period)
+#     return start_date

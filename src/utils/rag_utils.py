@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableConfig
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from .config import get_llm, get_embeddings
+
+from utils.config import get_llm, get_embeddings
 
 
 class FundamentalRAG:
@@ -66,7 +67,8 @@ class FundamentalRAG:
         # Ensure data directory exists
         os.makedirs(persist_directory, exist_ok=True)
         
-    def ingest_document(self, ticker: str, filing_type: str, document_path: str) -> bool:
+    def ingest_document(self, ticker: str, filing_type: str, filing_year: int, filing_start_month: int,
+                        filing_end_month: int, document_path: str) -> bool:
         """
         Ingest a 10-K or 10-Q document into the vector store.
         
@@ -91,6 +93,9 @@ class FundamentalRAG:
                 chunk.metadata.update({
                     "ticker": ticker.upper(),
                     "filing_type": filing_type,
+                    "filing_year": filing_year,
+                    "filing_start_month": filing_start_month,
+                    "filing_end_month": filing_end_month,
                     "source": document_path,
                     "ingestion_date": datetime.now().isoformat()
                 })
@@ -98,7 +103,8 @@ class FundamentalRAG:
             # Add to vector store
             self.vectorstore.add_documents(chunks)
             
-            print(f"Successfully ingested {len(chunks)} chunks from {ticker} {filing_type}")
+            print(f"Successfully ingested {len(chunks)} chunks from ticker:{ticker}, filing_type:{filing_type}, " +
+                  f"filing_year:{filing_year} from month {filing_start_month} to month {filing_end_month}")
             return True
             
         except Exception as e:
@@ -110,25 +116,69 @@ class FundamentalRAG:
         ticker: str,
         query: str,
         filing_type: Optional[str] = None,
+        from_year: Optional[int] = datetime.now().year,
+        from_month: Optional[int] = 1,
+        to_year: Optional[int] = datetime.now().year,
+        to_month: Optional[int] = 12,
         k: int = 5
     ) -> List[Document]:
         """
-        Retrieve relevant document chunks for a given query.
-        
+        Retrieve relevant document chunks for a given query within a date range.
+
         Args:
             ticker: Stock ticker symbol
             query: Search query
             filing_type: Optional filing type filter ("10-K" or "10-Q")
+            from_year: Start year (inclusive)
+            from_month: Start month (inclusive)  
+            to_year: End year (inclusive)
+            to_month: End month (inclusive)
             k: Number of chunks to retrieve
             
         Returns:
             List of relevant document chunks
         """
         try:
-            # Build metadata filter
-            filter_dict = {"ticker": ticker.upper()}
+            # Build base filter
+            filter_conditions: list[Any] = [{"ticker": ticker.upper()}]
+            
             if filing_type:
-                filter_dict["filing_type"] = filing_type
+                filter_conditions.append({"filing_type": filing_type})
+            
+            # Add date range filters
+            if from_year is not None:
+                # Documents that end after the start period
+                filter_conditions.append({
+                    "$or": [
+                        {"filing_year": {"$gt": from_year}},
+                        {
+                            "$and": [
+                                {"filing_year": from_year},
+                                {"filing_end_month": {"$gte": from_month}}
+                            ]
+                        }
+                    ]
+                })
+            
+            if to_year is not None:
+                # Documents that start before the end period
+                filter_conditions.append({
+                    "$or": [
+                        {"filing_year": {"$lt": to_year}},
+                        {
+                            "$and": [
+                                {"filing_year": to_year},
+                                {"filing_start_month": {"$lte": to_month}}
+                            ]
+                        }
+                    ]
+                })
+            
+            # Combine all conditions with AND
+            if len(filter_conditions) > 1:
+                filter_dict = {"$and": filter_conditions}
+            else:
+                filter_dict = filter_conditions[0]
             
             # Search for relevant chunks
             results = self.vectorstore.similarity_search(
@@ -293,55 +343,6 @@ def initialize_sample_data(rag_system: FundamentalRAG) -> None:
         print(f"Initialized sample data for {ticker} ({doc_info['company']})")
 
 
-def query_fundamental_data(
-    rag_system: FundamentalRAG,
-    ticker: str,
-    query: str,
-    config: RunnableConfig
-) -> str:
-    """
-    Query fundamental data using RAG and LLM for analysis.
-    
-    Args:
-        rag_system: The RAG system instance
-        ticker: Stock ticker symbol
-        query: Natural language query
-        config: Runnable config for LLM
-        
-    Returns:
-        LLM analysis response
-    """
-    
-    # Retrieve relevant chunks
-    relevant_chunks = rag_system.retrieve_relevant_chunks(ticker, query, k=5)
-    
-    if not relevant_chunks:
-        return f"No relevant information found for {ticker} in the knowledge base."
-    
-    # Combine chunk content
-    context = "\n\n".join([chunk.page_content for chunk in relevant_chunks])
-    
-    # Create LLM prompt
-    system_prompt = """As a fundamental financial equity analyst your primary responsibility is to analyze the most recent 10K report provided for a company. You have access to a powerful tool that can help you extract relevant information from the 10K. Your analysis should be based solely on the information that you retrieve using this tool. You can interact with this tool using natural language queries. The tool will understand your requests and return relevant text snippets and data points from the 10K document. Keep checking if you have answered the users' question to avoid looping.
-
-Based on the 10-K document excerpts provided below, please provide a comprehensive analysis addressing the user's query. Focus on factual information from the documents and provide clear, actionable insights.
-
-DOCUMENT EXCERPTS:
-{context}
-
-USER QUERY: {query}
-
-Please provide a detailed analysis based solely on the information available in the document excerpts above."""
-    
-    user_prompt = system_prompt.format(context=context, query=query)
-    
-    # Get LLM response
-    llm = get_llm()
-    response = llm.invoke([{"role": "user", "content": user_prompt}], config=config)
-    
-    return response.content if hasattr(response, 'content') else str(response)
-
-
 def validate_file_path(file_path: str) -> bool:
     """Validate that the file exists and is a PDF."""
     if not os.path.exists(file_path):
@@ -366,7 +367,7 @@ def validate_ticker(ticker: str) -> bool:
 
 def validate_filing_type(filing_type: str) -> bool:
     """Validate filing type."""
-    valid_types = ["10-K", "10-Q", "8-K", "20-F"]
+    valid_types = ["10K", "10Q", "8K", "20F"]
     if filing_type not in valid_types:
         print(f"❌ Error: Invalid filing type: {filing_type}")
         print(f"   Valid types are: {', '.join(valid_types)}")
@@ -378,6 +379,9 @@ def ingest_single_document(
     rag_system: FundamentalRAG,
     ticker: str,
     filing_type: str,
+    filing_year: int,
+    filing_start_month: int,
+    filing_end_month: int,
     document_path: str
 ) -> bool:
     """Ingest a single document."""
@@ -398,7 +402,8 @@ def ingest_single_document(
 
     # Perform ingestion
     try:
-        success = rag_system.ingest_document(ticker.upper(), filing_type, document_path)
+        success = rag_system.ingest_document(ticker.upper(), filing_type, filing_year, filing_start_month,
+                                             filing_end_month, document_path)
         if success:
             print(f"✅ Successfully ingested {ticker} {filing_type}")
             return True
@@ -411,7 +416,7 @@ def ingest_single_document(
         return False
 
 
-def parse_filename_metadata(filename: str) -> Optional[Dict[str, str]]:
+def parse_filename_metadata(filename: str) -> dict[str, Any] | None:
     """
     Parse metadata from filename using common naming conventions.
 
@@ -427,24 +432,18 @@ def parse_filename_metadata(filename: str) -> Optional[Dict[str, str]]:
 
     if len(parts) >= 2:
         ticker = parts[0].upper()
-        filing_info = '_'.join(parts[1:]).upper()
-
-        # Determine filing type
-        if '10K' in filing_info or '10-K' in filing_info:
-            filing_type = '10-K'
-        elif '10Q' in filing_info or '10-Q' in filing_info:
-            filing_type = '10-Q'
-        elif '8K' in filing_info or '8-K' in filing_info:
-            filing_type = '8-K'
-        elif '20F' in filing_info or '20-F' in filing_info:
-            filing_type = '20-F'
-        else:
-            # Default to 10-K if unclear
-            filing_type = '10-K'
+        filing_type = parts[1].upper()
+        filing_freq = parts[2].upper()
+        filing_start_month = parts[3]
+        filing_end_month = parts[4]
+        filing_year = parts[5]
 
         return {
             'ticker': ticker,
-            'filing_type': filing_type
+            'filing_type': filing_type,
+            'filing_year': int(filing_year),
+            'filing_start_month': int(filing_start_month),
+            'filing_end_month': int(filing_end_month)
         }
 
     return None
@@ -489,6 +488,9 @@ def batch_ingest_documents(rag_system: FundamentalRAG, directory: str) -> int:
                 rag_system,
                 metadata['ticker'],
                 metadata['filing_type'],
+                metadata['filing_year'],
+                metadata['filing_start_month'],
+                metadata['filing_end_month'],
                 pdf_file
             )
             if success:

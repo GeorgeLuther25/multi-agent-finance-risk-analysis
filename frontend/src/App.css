@@ -45,6 +45,67 @@ body {
   font-size: 1.8rem;
 }
 
+.prompt-helper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.prompt-helper label {
+  font-weight: 600;
+  color: #34495e;
+}
+
+.prompt-helper textarea {
+  min-height: 80px;
+  padding: 12px;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 1rem;
+  resize: vertical;
+  transition: border-color 0.3s ease;
+}
+
+.prompt-helper textarea:focus {
+  outline: none;
+  border-color: #764ba2;
+}
+
+.prompt-btn {
+  align-self: flex-start;
+  background: #f39c12;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.prompt-btn:hover {
+  background: #d35400;
+}
+
+.prompt-status {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.prompt-status.success {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border: 1px solid #81c784;
+}
+
+.prompt-status.error {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+}
+
 .form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -103,6 +164,29 @@ body {
   transform: none;
 }
 
+.download-btn {
+  grid-column: 1 / -1;
+  background: white;
+  color: #2c3e50;
+  border: 2px solid #764ba2;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: #764ba2;
+  color: white;
+}
+
+.download-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .error {
   background: #ffebee;
   border: 1px solid #f44336;
@@ -143,6 +227,33 @@ body {
 .card p {
   font-size: 2rem;
   font-weight: 700;
+  margin: 0;
+}
+
+.graph-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.graph-card h3 {
+  color: #1f2937;
+  font-size: 1.4rem;
+  margin-bottom: 12px;
+}
+
+.graph-card img {
+  max-width: 100%;
+  height: auto;
+  margin-top: 12px;
+}
+
+.graph-caption {
+  font-size: 0.95rem;
+  color: #64748b;
   margin: 0;
 }
 
@@ -244,6 +355,33 @@ body {
   background: none;
   padding: 0;
   color: inherit;
+}
+
+.debate-log {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
+.debate-log summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 12px;
+}
+
+.debate-log ul {
+  list-style: disc;
+  margin: 0;
+  padding-left: 20px;
+  color: #34495e;
+}
+
+.debate-log li {
+  margin-bottom: 6px;
+  line-height: 1.5;
 }
 
 .raw-data {

@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import os
+from typing import Optional, Tuple, Type
+
 from langgraph.graph import StateGraph, END
 from langchain_core.runnables import RunnableConfig
 from markdown_pdf import MarkdownPdf, Section
@@ -7,19 +11,22 @@ pdf = MarkdownPdf(toc_level=2, optimize=True)
 from dotenv import load_dotenv
 load_dotenv()
 
-# LangSmith (optional) - disabled to avoid API key warnings
-# os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-# os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
-
-from .agents import (
-    State, data_agent, risk_agent, sentiment_agent,
-    valuation_agent, fundamental_agent, writer_agent
+from agents import (
+    State,
+    data_agent,
+    risk_agent,
+    sentiment_agent,
+    valuation_agent,
+    fundamental_agent,
+    writer_agent,
 )
 # from .agents import State, data_agent, risk_agent, writer_agent
-from .agents import debate_sentiment_agent, debate_valuation_agent, debate_fundamental_agent, debate_manager, route_debate
-from .schemas import DebateReport
+from agents import debate_sentiment_agent, debate_valuation_agent, debate_fundamental_agent, debate_manager, route_debate
+from schemas import DebateReport
 
-def build_graph():
+
+def build_chain_graph():
+    """Default linear pipeline graph identical to the original implementation."""
     g = StateGraph(State)
     g.add_node("data", data_agent)
     g.add_node("sentiment", sentiment_agent)
@@ -34,7 +41,6 @@ def build_graph():
     g.add_edge("valuation", "fundamental")
     g.add_edge("fundamental", "risk")
     g.add_edge("risk", "writer")
-    # g.add_edge("data", END)
     g.add_edge("writer", END)
     return g.compile()
 
@@ -67,10 +73,37 @@ def build_debate_graph():
     return g.compile()
 
 
+def resolve_mode(mode: Optional[str] = None) -> str:
+    env_value = os.getenv("ANALYSIS_MODE")
+    value = mode or env_value or "chain"
+    value = value.strip().lower()
+    if value not in {"chain", "debate"}:
+        return "chain"
+    return value
+
+
+def get_workflow(mode: Optional[str] = None) -> Tuple[object, Type[State]]:
+    """
+    Returns a compiled LangGraph graph and the associated state class based
+    on the chosen analysis mode.
+    """
+    resolved = resolve_mode(mode)
+    if resolved == "debate":
+        from debate_agents import DebateState, build_debate_graph
+
+        return build_debate_graph(), DebateState
+    return build_chain_graph(), State
+
+
+def build_graph():
+    """Backward-compatible helper returning the chain graph."""
+    return build_chain_graph()
+
+
 if __name__ == "__main__":
     if not os.path.exists("final_state.json"):
-        graph = build_graph()
-        state = State(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
+        graph, state_cls = get_workflow()
+        state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
         final_state = graph.invoke(state, config=RunnableConfig())
         
         # Handle the return value properly

@@ -13,7 +13,7 @@ SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
 if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
-import main  # src/main.py
+from src import main  # src/main.py
 from agents import State  # src/agents.py
 
 app = Flask(__name__)
@@ -27,13 +27,34 @@ def health_check():
 
 @app.route('/api/models', methods=['GET'])
 def get_available_models():
-    # Keep simple and static for now
-    return jsonify({
-        'models': ['qwen:4b'],
-        'current_model': 'qwen:4b',
-        'description': 'Local Ollama Qwen 4B model'
-    })
+    # Determine which provider to use
+    provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
 
+    # Auto-switch logic: if auto, prefer OpenAI if key exists
+    if provider == 'auto':
+        provider = 'openai' if os.getenv('OPENAI_API_KEY') else 'ollama'
+
+    # Load provider-specific model info
+    if provider == 'openai':
+        current_model = os.getenv('OPENAI_MODEL', 'gpt-4o')
+        description = 'OpenAI GPT model'
+        models = [current_model]
+    elif provider == 'ollama':
+        current_model = os.getenv('OLLAMA_MODEL', 'qwen3:4b')
+        description = 'Local Ollama model'
+        models = [current_model]
+    else:
+        return jsonify({
+            'error': f"Unknown MODEL_PROVIDER: {provider}. Must be 'openai' or 'ollama'."
+        }), 400
+
+    # Return the model info
+    return jsonify({
+        'provider': provider,
+        'models': models,
+        'current_model': current_model,
+        'description': description
+    })
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_stock():
@@ -46,21 +67,40 @@ def analyze_stock():
         if missing:
             return jsonify({'error': f"Missing required field(s): {', '.join(missing)}"}), 400
 
-        state = State(
+        requested_mode = str(data.get('mode', '')).strip().lower() or None
+        env_mode = os.getenv('ANALYSIS_MODE')
+        effective_mode = requested_mode or env_mode
+
+        graph, state_cls = main.get_workflow(effective_mode)
+        print(f"🧠 Analysis mode: {main.resolve_mode(effective_mode)}")
+
+        state = state_cls(
             ticker=str(data['ticker']).upper(),
             period=str(data['period']),
             interval=str(data['interval']),
             horizon_days=int(data['horizon_days']),
         )
 
-        # Quick Ollama reachability check (fail fast)
-        try:
-            requests.get(os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434') + '/api/tags', timeout=2)
-        except Exception:
-            return jsonify({'error': 'Ollama is not reachable. Start it with: ollama serve'}), 503
+        # Detect provider dynamically (OpenAI vs Ollama)
+        model_provider = os.getenv('MODEL_PROVIDER', 'auto').lower()
 
-        # Build graph
-        graph = main.build_graph()
+        # Determine actual provider preference
+        openai_key = os.getenv('OPENAI_API_KEY')
+        if model_provider == 'auto':
+            model_provider = 'openai' if openai_key else 'ollama'
+
+        # ✅ Force OpenAI if MODEL_PROVIDER is openai or key exists
+        if model_provider == 'openai' and openai_key:
+            print("🔍 Using OpenAI provider (GPT-4o). Skipping Ollama check.")
+        else:
+            # Only check Ollama if explicitly required
+            try:
+                requests.get(os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434') + '/api/tags', timeout=2)
+            except Exception:
+                return jsonify({'error': 'Ollama is not reachable. Start it with: ollama serve'}), 503
+
+        # Log which provider is being used (for debugging)
+        print(f"🔍 Using provider: {model_provider}")
 
         # Run with watchdog timeout to avoid UI hang
         result_queue: "queue.Queue" = queue.Queue(maxsize=1)
@@ -75,7 +115,7 @@ def analyze_stock():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
 
-        timeout_seconds = int(os.getenv('ANALYZE_TIMEOUT_SECS', '90'))
+        timeout_seconds = int(os.getenv('ANALYZE_TIMEOUT_SECS', '300'))
         thread.join(timeout_seconds)
 
         if thread.is_alive():
@@ -87,14 +127,17 @@ def analyze_stock():
 
         final_state = payload
 
-        # Handle both dict and State object returns
-        def safe_get(obj, attr, default=None):
-            if isinstance(obj, dict):
-                return obj.get(attr, default)
-            else:
-                return getattr(obj, attr, default)
+        # ✅ Fix: normalize final_state to dict if needed
+        if not isinstance(final_state, dict):
+            final_state = final_state.__dict__ if hasattr(final_state, "__dict__") else {}
 
-        # Serialize response
+        # ✅ Safe getter to handle both dicts and objects
+        def safe_get(obj, key, default=None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        # ✅ Serialize response safely (kept identical)
         result = {
             'ticker': safe_get(final_state, 'ticker'),
             'period': safe_get(final_state, 'period'),
@@ -114,7 +157,11 @@ def analyze_stock():
                     'ticker': safe_get(safe_get(final_state, 'news'), 'ticker'),
                     'window_days': safe_get(safe_get(final_state, 'news'), 'window_days'),
                     'items': [
-                        {'title': safe_get(it, 'title'), 'url': safe_get(it, 'url'), 'published': safe_get(it, 'published')}
+                        {
+                            'title': getattr(it, 'title', safe_get(it, 'title')),
+                            'url': getattr(it, 'url', safe_get(it, 'url')),
+                            'published': getattr(it, 'published', safe_get(it, 'published')),
+                        }
                         for it in (safe_get(safe_get(final_state, 'news'), 'items') or [])
                     ],
                 }
@@ -179,6 +226,12 @@ def analyze_stock():
             ),
         }
 
+        result['analysis_mode'] = main.resolve_mode(effective_mode)
+
+        transcript = safe_get(final_state, 'transcript')
+        if transcript:
+            result['debate_transcript'] = transcript
+
         return jsonify(result)
 
     except Exception as e:
@@ -190,7 +243,9 @@ def analyze_stock():
 if __name__ == '__main__':
     print("🚀 Starting Finance Risk Analysis API...")
     print("📊 Multi-Agent System Ready")
-    print("🤖 Using Local Ollama Qwen:4b Model")
-    app.run(debug=True, host='0.0.0.0', port=int(os.getenv('PORT', '5001')))
-
-
+    provider = os.getenv('MODEL_PROVIDER', 'openai').lower()
+    if provider == 'openai':
+        print(f"🤖 Using OpenAI model: {os.getenv('OPENAI_MODEL', 'gpt-4o')}")
+    else:
+        print(f"🤖 Using OpenAI ChatGPT model: {os.getenv('OLLAMA_MODEL', 'qwen:4b')}")
+    app.run(debug=True, host='0.0.0.0', port=int(os.getenv('PORT', '8000')))
