@@ -848,6 +848,8 @@ No fundamental analysis available - no 10-K/10-Q data found.
 - Fundamental insights extracted through RAG over ingested 10-K/10-Q filings.
 - Risk metrics computed from returns-based analytics (volatility, drawdown, VaR).
 
+---
+
 {"## Investment Final Recommendation\n" + state.debate.consensus_summary if state.debate else ""}
 """
     # _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
@@ -984,10 +986,10 @@ def debate_manager(state: State):
     if new_state.debate.terminated == "END" or new_state.debate.terminated == "ENDMAX":
         messages = [SystemMessage(content=DEBATE_MANAGER_SYSTEM),]
         messages.append(HumanMessage(content=f"""
-                                        Based on this Final Consensus, polished a final summary for put as a report.
-                                        1. Make it concise and clear.
-                                        2. Do not mention about the agents or debate process.
-                                        3. Output ONLY the polished final summary without heading.
+                                        Refine the Final Consensus into a clear, concise summary suitable for a report.
+                                        - Make it brief and precise.
+                                        - Do not mention agents or the debate process.
+                                        - Output only the final polished summary, with no headings or extra text.
 
                                         Final Consensus:
                                         "{new_state.debate.consensus_summary}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Optional, Tuple, Type
 
 from langgraph.graph import StateGraph, END
@@ -10,6 +11,11 @@ pdf = MarkdownPdf(toc_level=2, optimize=True)
 
 from dotenv import load_dotenv
 load_dotenv()
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
+if SRC_DIR not in sys.path:
+    sys.path.append(SRC_DIR)
 
 from agents import (
     State,
@@ -44,7 +50,7 @@ def build_chain_graph():
     g.add_edge("writer", END)
     return g.compile()
 
-def build_debate_graph():
+def build_final_recommendation_graph():
     g = StateGraph(State)
     # Multi-agent Debate
     g.add_node("debate_manager", debate_manager)
@@ -103,6 +109,8 @@ def build_graph():
 if __name__ == "__main__":
     if not os.path.exists("final_state.json"):
         graph, state_cls = get_workflow()
+        with open("graph_collaboration.png", "wb") as f:
+            f.write(graph.get_graph().draw_mermaid_png())
         # state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
         state = state_cls(ticker="GOOGL", period="1wk", interval="1d", horizon_days=30)
         final_state = graph.invoke(state, config=RunnableConfig())
@@ -137,7 +145,7 @@ if __name__ == "__main__":
     with open("final_state.json", "r") as f:
         final_state = State.model_validate_json(f.read())
 
-        debateGraph = build_debate_graph()
+        debateGraph = build_final_recommendation_graph()
         debateReport = DebateReport(agent_list=["fundamental", "sentiment", "valuation"])
         debateReport.agent_max_turn = 5
         final_state.debate = debateReport

@@ -6,6 +6,8 @@ import traceback
 import threading
 import queue
 import requests
+import io
+import base64
 
 # Ensure we can import project code from src/
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -15,6 +17,10 @@ if SRC_DIR not in sys.path:
 
 from src import main  # src/main.py
 from agents import State  # src/agents.py
+from langchain_core.runnables import RunnableConfig
+from utils.schemas import DebateReport
+
+from markdown_pdf import MarkdownPdf, Section
 
 app = Flask(__name__)
 CORS(app)
@@ -108,9 +114,31 @@ def analyze_stock():
         def _run():
             try:
                 res = graph.invoke(state)
-                result_queue.put((True, res))
+                res = State(**res)
+
+                # # Debate model for final recommendation
+                finalRecommendationGraph = main.build_final_recommendation_graph()
+                debateReport = DebateReport(agent_list=["fundamental", "sentiment", "valuation"])
+                debateReport.agent_max_turn = 5
+                res.debate = debateReport
+                res = finalRecommendationGraph.invoke(res, config=RunnableConfig(recursion_limit=100), verbose=True)
+                res = State(**res)
+
+                # Use the output directly, to test print report only
+                # with open("final_state_with_debate.json", "r") as f:
+                #     res = State.model_validate_json(f.read())
+                #     print(res)
+                
+                pdf = MarkdownPdf(toc_level=2, optimize=True)
+                pdf.add_section(Section(res.report.markdown_report))
+                out = io.BytesIO()
+                pdf.save_bytes(out)
+                out.seek(0)
+
+                # Put result in queue
+                result_queue.put((True, res, out))
             except Exception as e:
-                result_queue.put((False, e))
+                result_queue.put((False, e, None))
 
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
@@ -119,9 +147,9 @@ def analyze_stock():
         thread.join(timeout_seconds)
 
         if thread.is_alive():
-            return jsonify({'error': f'Analysis timed out after {timeout_seconds}s. Try a shorter period/interval or confirm qwen model is loaded.'}), 504
+            return jsonify({'error': f'Analysis timed out after {timeout_seconds}s. Try a shorter period/interval.'}), 504
 
-        ok, payload = result_queue.get()
+        ok, payload, out_pdf = result_queue.get()
         if not ok:
             raise payload
 
@@ -221,9 +249,16 @@ def analyze_stock():
                     'risk_flags': safe_get(safe_get(final_state, 'report'), 'risk_flags'),
                     'methodology': safe_get(safe_get(final_state, 'report'), 'methodology'),
                     'markdown_report': safe_get(safe_get(final_state, 'report'), 'markdown_report'),
+                    'consensus_summary': safe_get(safe_get(safe_get(final_state, 'report'), 'debate'),'consensus_summary'),
                 }
                 if safe_get(final_state, 'report') else None
             ),
+            'debate': (
+                {
+                    'consensus_summary': safe_get(safe_get(final_state, 'debate'),'consensus_summary'),
+                }
+                if safe_get(final_state, 'debate') else None
+            )
         }
 
         result['analysis_mode'] = main.resolve_mode(effective_mode)
@@ -231,6 +266,9 @@ def analyze_stock():
         transcript = safe_get(final_state, 'transcript')
         if transcript:
             result['debate_transcript'] = transcript
+
+        if out_pdf:
+            result['report_pdf_base64'] = base64.b64encode(out_pdf.read()).decode('utf-8')
 
         return jsonify(result)
 
