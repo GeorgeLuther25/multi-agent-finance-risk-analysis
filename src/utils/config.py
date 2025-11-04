@@ -42,7 +42,7 @@ try:
 except ImportError:
     OllamaEmbeddings = None
 
-def get_llm(temperature: float = 0.1, model_provider: str = "auto", max_tokens=2000):
+def get_llm(temperature: float = 0.1, model_provider: str = "auto", max_tokens=16000):
     """
     Get an actual LLM instance based on available API keys and preferences.
     

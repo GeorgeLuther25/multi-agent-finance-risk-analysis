@@ -22,7 +22,7 @@ from agents import (
 )
 # from .agents import State, data_agent, risk_agent, writer_agent
 from agents import debate_sentiment_agent, debate_valuation_agent, debate_fundamental_agent, debate_manager, route_debate
-from schemas import DebateReport
+from utils.schemas import DebateReport
 
 
 def build_chain_graph():
@@ -103,7 +103,8 @@ def build_graph():
 if __name__ == "__main__":
     if not os.path.exists("final_state.json"):
         graph, state_cls = get_workflow()
-        state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
+        # state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
+        state = state_cls(ticker="GOOGL", period="2mo", interval="1d", horizon_days=30)
         final_state = graph.invoke(state, config=RunnableConfig())
         
         # Handle the return value properly
