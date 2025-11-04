@@ -104,7 +104,7 @@ if __name__ == "__main__":
     if not os.path.exists("final_state.json"):
         graph, state_cls = get_workflow()
         # state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
-        state = state_cls(ticker="GOOGL", period="2mo", interval="1d", horizon_days=30)
+        state = state_cls(ticker="GOOGL", period="1wk", interval="1d", horizon_days=30)
         final_state = graph.invoke(state, config=RunnableConfig())
         
         # Handle the return value properly
