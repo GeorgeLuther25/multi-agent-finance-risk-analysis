@@ -263,9 +263,9 @@ def analyze_stock():
 
         result['analysis_mode'] = main.resolve_mode(effective_mode)
 
-        transcript = safe_get(final_state, 'transcript')
+        transcript = safe_get(safe_get(final_state, 'debate'), 'agent_arguments')
         if transcript:
-            result['debate_transcript'] = transcript
+            result['agent_arguments'] = transcript
 
         if out_pdf:
             result['report_pdf_base64'] = base64.b64encode(out_pdf.read()).decode('utf-8')

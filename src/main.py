@@ -109,7 +109,7 @@ def build_graph():
 if __name__ == "__main__":
     if not os.path.exists("final_state.json"):
         graph, state_cls = get_workflow()
-        with open("graph_collaboration.png", "wb") as f:
+        with open("frontend/public/visualizations/langgraph_collaboration.png", "wb") as f:
             f.write(graph.get_graph().draw_mermaid_png())
         # state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
         state = state_cls(ticker="GOOGL", period="1wk", interval="1d", horizon_days=30)
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         debateReport = DebateReport(agent_list=["fundamental", "sentiment", "valuation"])
         debateReport.agent_max_turn = 5
         final_state.debate = debateReport
-        with open("graph_debate.png", "wb") as f:
+        with open("frontend/public/visualizations/langgraph_debate.png", "wb") as f:
             f.write(debateGraph.get_graph().draw_mermaid_png())
         final_state = debateGraph.invoke(final_state, config=RunnableConfig(recursion_limit=100), verbose=True)
         print('Debate Terminated: ',final_state['debate'].terminated)

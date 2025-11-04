@@ -219,7 +219,7 @@ def sentiment_agent(state: State, config: RunnableConfig):
     - Key insights and reasoning
     - Investment recommendation with clear rationale
 
-    Provide a concise summary along with an informed recommendation on whether to invest in this stock.
+    Provide a concise summary along with an informed recommendation on whether to invest in this stock for the next {state.horizon_days} days.
 
     IMPORTANT: Also include the structured json data like the example below, with its values replaced by your analyzed results, and the exact text STRUCTURED DATA.
     STRUCTURED DATA
@@ -545,7 +545,7 @@ def valuation_agent(state: State, config: RunnableConfig):
         # Use LLM for enhanced trend analysis and interpretation
         analysis_prompt = f"""
         Compute the valuation metrics for {state.ticker}, price_csv:{state.market.price_csv}, period:{state.period}.
-        Provide enhanced trend analysis and investment implications based on these metrics.
+        Provide enhanced trend analysis and investment implications for the next {state.horizon_days} days based on these metrics.
         """
         
         try:

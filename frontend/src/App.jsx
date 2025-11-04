@@ -435,14 +435,25 @@ function App() {
                 </div>
               </div>
 
-              {result.debate_transcript && (
+              {result.agent_arguments && (
                 <details className="debate-log">
                   <summary>Debate Transcript</summary>
-                  <ul>
-                    {result.debate_transcript.map((line, idx) => (
-                      <li key={idx}>{line}</li>
+                  <div>
+                    {Object.entries(result.agent_arguments).map(([agentName, agentArgs]) => (
+                      <div key={agentName} style={{ marginBottom: '20px' }}>
+                        <h4 style={{ color: '#2c3e50', marginBottom: '10px', textTransform: 'capitalize' }}>
+                          {agentName} Agent
+                        </h4>
+                        <ul>
+                          {Object.entries(agentArgs).map(([round, argument]) => (
+                            <li key={`${agentName}-${round}`} style={{ marginBottom: '8px' }}>
+                              <strong>Round {parseInt(round) + 1}:</strong> {argument}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </details>
               )}
             </details>
