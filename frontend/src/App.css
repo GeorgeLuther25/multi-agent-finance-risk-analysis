@@ -230,6 +230,13 @@ body {
   margin: 0;
 }
 
+.card-text-regular {
+  font-size: 1.5rem!important;
+  font-weight: 200!important;
+  text-align: justify;
+  color: #2c3e50!important;
+}
+
 .graph-card {
   background: white;
   border-radius: 12px;
