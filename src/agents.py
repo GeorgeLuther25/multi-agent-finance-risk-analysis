@@ -910,10 +910,11 @@ No fundamental analysis available - no 10-K/10-Q data found.
 # Debate
 def debate_manager(state: State):
     """Debate Manager control debates"""
+    current_agent = 'debate_manager'
     llm = get_llm(temperature=0.5)
     new_state = state.model_copy()
 
-    DEBATE_MANAGER_SYSTEM = """
+    DEBATE_MANAGER_SYSTEM = f"""
                             You are the Debate Manager coordinating three agents: Fundamental, Sentiment, and Valuation.
                             Your task:
                             - Carefully read the specialized agents arguments.
@@ -927,7 +928,7 @@ def debate_manager(state: State):
                             - Note which arguments are stronger or better supported.
                             - Provide a single, coherent conclusion that integrates all perspectives.
                             - If uncertainty remains, explain it clearly.
-                            - Be balanced, analytical, and clear about judgement to invest in the stock.
+                            - Be balanced, analytical, and clear about judgement to invest in the stock within the next {state.horizon_days} days.
 
                             Output format:
                             - Output is consise summary
@@ -959,6 +960,7 @@ def debate_manager(state: State):
         response_text = response.content if hasattr(response, 'content') else str(response)
         prev_consensus_summary = new_state.debate.consensus_summary
         new_state.debate.consensus_summary = response_text
+        new_state.debate.agent_arguments[current_agent].append(response_text)
         # print(f"manager conclusions: {response_text}")
 
         if all(c > 1 for c in counts_list):
@@ -998,6 +1000,7 @@ def debate_manager(state: State):
         response = llm.invoke(messages)
         response_text = response.content if hasattr(response, 'content') else str(response)
         new_state.debate.consensus_summary = response_text
+        new_state.debate.agent_arguments[current_agent].append(response_text)
         print(f"Final Consensus Summary:\n{new_state.debate.consensus_summary}")
 
     return new_state
@@ -1036,7 +1039,7 @@ def debate_fundamental_agent(state: State):
         # First Analysis
         initial_analysis_prompt = f"""
                                     Task:
-                                    - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                                    - Make investment recommendation analysis for {state.ticker} within the next {state.horizon_days} days, based ONLY your specialization.\n
                                     - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
                                         """
         # DEBATE_SYSTEM += "\n Output a concise summary emphasizing key fundamental insights."
@@ -1102,7 +1105,7 @@ def debate_sentiment_agent(state: State):
         #                                 """
         initial_analysis_prompt = f"""
                                     Task:
-                                    - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                                    - Make investment recommendation analysis for {state.ticker} within the next {state.horizon_days} days, based ONLY your specialization.\n
                                     - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
                                   """
         # DEBATE_SYSTEM += "\n Output a concise summary emphasizing key fundamental insights."
@@ -1169,7 +1172,7 @@ def debate_valuation_agent(state: State):
         # First Analysis
         initial_analysis_prompt = f"""
                                     Task:
-                                    - Make investment recommendation analysis for {state.ticker} based ONLY your specialization.\n
+                                    - Make investment recommendation analysis for {state.ticker} within the next {state.horizon_days} days, based ONLY your specialization.\n
                                     - Based on your analysis, give a recommendation to 'buy', 'hold', or 'sell'.
                                         """
         # DEBATE_SYSTEM += "\n Output a concise summary emphasizing key fundamental insights."
