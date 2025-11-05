@@ -8,6 +8,9 @@ import glob
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import tempfile
+import shutil
+import sqlite3
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
@@ -35,37 +38,47 @@ class FundamentalRAG:
         self.collection_name = "fundamental_filings_Ollama" if os.getenv("OLLAMA_MODEL") else "fundamental_filings"
         
         # Initialize or load existing vector store with dimension compatibility check
-        try:
-            self.vectorstore = Chroma(
+        def _initialize_store(target_dir: str):
+            return Chroma(
                 collection_name=self.collection_name,
-                persist_directory=persist_directory,
+                persist_directory=target_dir,
                 embedding_function=self.embeddings
             )
-            # Test if embeddings are compatible by trying a simple similarity search
-            test_embedding = self.embeddings.embed_query("test")
-            print(f"🔍 Testing ChromaDB compatibility with {len(test_embedding)}-dimensional embeddings")
-            # Try a simple query to check if dimensions match
-            self.vectorstore.similarity_search("test", k=1)
-            print("✅ ChromaDB collection is compatible")
+
+        try:
+            os.makedirs(self.persist_directory, exist_ok=True)
+            self.vectorstore = _initialize_store(self.persist_directory)
+        except (sqlite3.OperationalError, PermissionError) as e:
+            message = str(e).lower()
+            if "readonly" in message:
+                fallback_dir = os.path.join(
+                    tempfile.gettempdir(), "multi_agent_chroma_db"
+                )
+                print(f"⚠️  ChromaDB path {self.persist_directory} is read-only. Falling back to {fallback_dir}.")
+                os.makedirs(fallback_dir, exist_ok=True)
+                self.persist_directory = fallback_dir
+                self.vectorstore = _initialize_store(self.persist_directory)
+            else:
+                raise
         except Exception as e:
             if "dimension" in str(e).lower() or "expecting embedding with dimension" in str(e):
                 print(f"🔄 Embedding dimension mismatch detected: {str(e)}")
                 print("🔄 Recreating vector store with new embedding dimensions...")
-                # Remove existing collection and create new one
-                import shutil
-                if os.path.exists(persist_directory):
-                    shutil.rmtree(persist_directory)
-                os.makedirs(persist_directory, exist_ok=True)
-                self.vectorstore = Chroma(
-                    persist_directory=persist_directory,
-                    embedding_function=self.embeddings
-                )
+                if os.path.exists(self.persist_directory):
+                    shutil.rmtree(self.persist_directory)
+                os.makedirs(self.persist_directory, exist_ok=True)
+                self.vectorstore = _initialize_store(self.persist_directory)
                 print("✅ Created new ChromaDB collection")
             else:
                 raise e
+
+        test_embedding = self.embeddings.embed_query("test")
+        print(f"🔍 Testing ChromaDB compatibility with {len(test_embedding)}-dimensional embeddings")
+        self.vectorstore.similarity_search("test", k=1)
+        print("✅ ChromaDB collection is compatible")
         
         # Ensure data directory exists
-        os.makedirs(persist_directory, exist_ok=True)
+        os.makedirs(self.persist_directory, exist_ok=True)
         
     def ingest_document(self, ticker: str, filing_type: str, filing_year: int, filing_start_month: int,
                         filing_end_month: int, document_path: str) -> bool:

@@ -540,14 +540,41 @@ def valuation_agent(state: State, config: RunnableConfig):
             risk_assessment="Unable to assess risk without market data"
         )
     else:
-        valuation_agent = create_react_agent(llm, [_compute_valuation_metrics], prompt=(VALUATION_SYSTEM))
-        
-        # Use LLM for enhanced trend analysis and interpretation
-        analysis_prompt = f"""
-        Compute the valuation metrics for {state.ticker}, price_csv:{state.market.price_csv}, period:{state.period}.
-        Provide enhanced trend analysis and investment implications for the next {state.horizon_days} days based on these metrics.
-        """
-        
+        try:
+            base_metrics = _compute_valuation_metrics(
+                state.market.price_csv,
+                state.ticker,
+                state.period,
+            )
+            valuation_metrics = ValuationMetrics(**base_metrics)
+        except Exception as err:
+            print(f"⚠️  Baseline valuation computation failed: {err}")
+            valuation_metrics = ValuationMetrics(
+                ticker=state.ticker,
+                analysis_period=state.period,
+                trading_days=0,
+                cumulative_return=0.0,
+                annualized_return=0.0,
+                daily_volatility=0.0,
+                annualized_volatility=0.0,
+                price_trend="sideways",
+                volatility_regime="medium",
+                valuation_insights=["Unable to compute valuation metrics"],
+                trend_analysis="Trend analysis unavailable due to computation error.",
+                risk_assessment="Risk profile unavailable.",
+            )
+            base_metrics = None
+
+        valuation_agent = None
+        if valuation_metrics:
+            valuation_agent = create_react_agent(llm, [_compute_valuation_metrics], prompt=(VALUATION_SYSTEM))
+
+        if valuation_agent and base_metrics:
+            analysis_prompt = f"""
+            Compute the valuation metrics for {state.ticker}, price_csv:{state.market.price_csv}, period:{state.period}.
+            Provide enhanced trend analysis and investment implications for the next {state.horizon_days} days based on these metrics.
+            """
+
         try:
             tool_results = []
             final_response = None
@@ -562,19 +589,26 @@ def valuation_agent(state: State, config: RunnableConfig):
                         elif hasattr(message, 'content'):
                             # This might be the final response
                             final_response = message.content
-            
-            # print(f"tool_results: {tool_results}, type: {type(tool_results)}")
-            valuation_metrics = ValuationMetrics(**ast.literal_eval(tool_results[-1]))
-            # Update the valuation metrics with enhanced analysis
-            valuation_metrics.trend_analysis = final_response
-            print(f"trend_analysis is: {final_response}")
-            
+
+            if tool_results:
+                try:
+                    parsed_metrics = ast.literal_eval(tool_results[-1])
+                    valuation_metrics = ValuationMetrics(**parsed_metrics)
+                except Exception as parse_err:
+                    print(f"⚠️  Unable to parse valuation tool output: {parse_err}")
+            if final_response:
+                valuation_metrics.trend_analysis = final_response
+                print(f"trend_analysis is: {final_response}")
+            elif valuation_metrics.trend_analysis:
+                valuation_metrics.trend_analysis += "\n\nLLM commentary unavailable; using computed metrics only."
+            else:
+                valuation_metrics.trend_analysis = "LLM commentary unavailable; using computed metrics only."
         except Exception as e:
             print(f"⚠️  Error in LLM analysis: {e}")
-            valuation_metrics.trend_analysis = (
-                valuation_metrics.trend_analysis
-                + "\n\nLLM commentary unavailable; using computed metrics only."
-            )
+            if valuation_metrics.trend_analysis:
+                valuation_metrics.trend_analysis += "\n\nLLM commentary unavailable; using computed metrics only."
+            else:
+                valuation_metrics.trend_analysis = "LLM commentary unavailable; using computed metrics only."
     
     # Create new state with valuation metrics
     new_state = State(
@@ -637,91 +671,101 @@ def writer_agent(state: State, config: RunnableConfig):
     # llm = get_llm()
     
     # Build sentiment section
-    sentiment_section = ""
     if state.sentiment:
-        sentiment_section = f"""
-## Sentiment Analysis
-- **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}
-- **Confidence Score**: {state.sentiment.confidence_score:.1%}
-- **News Items Analyzed**: {state.sentiment.news_items_analyzed}
-- **Investment Recommendation**: {state.sentiment.investment_recommendation}
-
-### Key Insights
-{chr(10).join(f"- {insight}" for insight in state.sentiment.key_insights)}
-
-### Summary
-{state.sentiment.summary}
-"""
+        sentiment_lines = [
+            "## Sentiment Analysis",
+            f"- **Overall Sentiment**: {state.sentiment.overall_sentiment.title()}",
+            f"- **Confidence Score**: {state.sentiment.confidence_score:.1%}",
+            f"- **News Items Analyzed**: {state.sentiment.news_items_analyzed}",
+            f"- **Investment Recommendation**: {state.sentiment.investment_recommendation}",
+        ]
+        if state.sentiment.key_insights:
+            sentiment_lines.append("")
+            sentiment_lines.append("### Key Takeaways")
+            sentiment_lines.extend(f"- {insight}" for insight in state.sentiment.key_insights)
+        if state.sentiment.summary:
+            sentiment_lines.append("")
+            sentiment_lines.append("### Summary")
+            sentiment_lines.append(state.sentiment.summary)
+        sentiment_section = "\n".join(sentiment_lines)
     else:
-        sentiment_section = """
-## Sentiment Analysis
-No sentiment analysis available - insufficient news data.
-"""
+        sentiment_section = "\n".join([
+            "## Sentiment Analysis",
+            "No sentiment analysis available - insufficient news data.",
+        ])
 
-    # Build valuation section
-    valuation_section = ""
     if state.valuation:
-        valuation_section = f"""
-## Valuation Analysis
-- **Analysis Period**: {state.valuation.analysis_period}
-- **Trading Days Analyzed**: {state.valuation.trading_days}
-- **Cumulative Return**: {state.valuation.cumulative_return:.4f} ({state.valuation.cumulative_return:.2%})
-- **Annualized Return**: {state.valuation.annualized_return:.4f} ({state.valuation.annualized_return:.2%})
-- **Daily Volatility**: {state.valuation.daily_volatility:.6f}
-- **Annualized Volatility**: {state.valuation.annualized_volatility:.4f} ({state.valuation.annualized_volatility:.2%})
-- **Price Trend**: {state.valuation.price_trend.title()}
-- **Volatility Regime**: {state.valuation.volatility_regime.title()}
-
-### Valuation Insights
-{chr(10).join(f"- {insight}" for insight in state.valuation.valuation_insights)}
-
-### Trend Analysis
-{state.valuation.trend_analysis}
-
-### Risk Assessment
-{state.valuation.risk_assessment}
-"""
+        valuation_lines = [
+            "## Valuation Analysis",
+            f"- **Analysis Period**: {state.valuation.analysis_period}",
+            f"- **Trading Days Analyzed**: {state.valuation.trading_days}",
+            f"- **Cumulative Return**: {state.valuation.cumulative_return:.4f} ({state.valuation.cumulative_return:.2%})",
+            f"- **Annualized Return**: {state.valuation.annualized_return:.4f} ({state.valuation.annualized_return:.2%})",
+            f"- **Daily Volatility**: {state.valuation.daily_volatility:.6f}",
+            f"- **Annualized Volatility**: {state.valuation.annualized_volatility:.4f} ({state.valuation.annualized_volatility:.2%})",
+            f"- **Price Trend**: {state.valuation.price_trend.title()}",
+            f"- **Volatility Regime**: {state.valuation.volatility_regime.title()}",
+        ]
+        if state.valuation.valuation_insights:
+            valuation_lines.append("")
+            valuation_lines.append("### Valuation Insights")
+            valuation_lines.extend(f"- {insight}" for insight in state.valuation.valuation_insights)
+        if state.valuation.trend_analysis:
+            valuation_lines.append("")
+            valuation_lines.append("### Trend Analysis")
+            valuation_lines.append(state.valuation.trend_analysis)
+        if state.valuation.risk_assessment:
+            valuation_lines.append("")
+            valuation_lines.append("### Risk Assessment")
+            valuation_lines.append(state.valuation.risk_assessment)
+        valuation_section = "\n".join(valuation_lines)
     else:
-        valuation_section = """
-## Valuation Analysis
-No valuation analysis available - insufficient market data.
-"""
+        valuation_section = "\n".join([
+            "## Valuation Analysis",
+            "No valuation analysis available - insufficient market data.",
+        ])
 
-    # Build fundamental analysis section
-    fundamental_section = ""
     if state.fundamental:
-        fundamental_section = f"""
-## Fundamental Analysis (10-K/10-Q Based)
-- **Filing Type**: {state.fundamental.filing_type}
-- **Filing Date**: {state.fundamental.filing_date}
-- **Financial Health Score**: {state.fundamental.financial_health_score:.1f}/10.0
-
-### Executive Summary
-{state.fundamental.executive_summary}
-
-### Business Highlights
-{chr(10).join(f"- {highlight}" for highlight in state.fundamental.business_highlights)}
-
-### Risk Factors
-{chr(10).join(f"- {risk}" for risk in state.fundamental.risk_factors)}
-
-### Competitive Position
-{state.fundamental.competitive_position}
-
-### Growth Prospects
-{state.fundamental.growth_prospects}
-
-### Investment Thesis
-{state.fundamental.investment_thesis}
-
-### Concerns and Risks
-{chr(10).join(f"- {concern}" for concern in state.fundamental.concerns_and_risks)}
-"""
+        fundamental_lines = [
+            "## Fundamental Analysis",
+            f"- **Filing Type**: {state.fundamental.filing_type}",
+            f"- **Filing Date**: {state.fundamental.filing_date}",
+            f"- **Financial Health Score**: {state.fundamental.financial_health_score:.1f}/10.0",
+        ]
+        if state.fundamental.executive_summary:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Executive Summary")
+            fundamental_lines.append(state.fundamental.executive_summary)
+        if state.fundamental.business_highlights:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Business Highlights")
+            fundamental_lines.extend(f"- {highlight}" for highlight in state.fundamental.business_highlights)
+        if state.fundamental.risk_factors:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Risk Factors")
+            fundamental_lines.extend(f"- {risk}" for risk in state.fundamental.risk_factors)
+        if state.fundamental.competitive_position:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Competitive Position")
+            fundamental_lines.append(state.fundamental.competitive_position)
+        if state.fundamental.growth_prospects:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Growth Prospects")
+            fundamental_lines.append(state.fundamental.growth_prospects)
+        if state.fundamental.investment_thesis:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Investment Thesis")
+            fundamental_lines.append(state.fundamental.investment_thesis)
+        if state.fundamental.concerns_and_risks:
+            fundamental_lines.append("")
+            fundamental_lines.append("### Concerns and Risks")
+            fundamental_lines.extend(f"- {concern}" for concern in state.fundamental.concerns_and_risks)
+        fundamental_section = "\n".join(fundamental_lines)
     else:
-        fundamental_section = """
-## Fundamental Analysis
-No fundamental analysis available - no 10-K/10-Q data found.
-"""
+        fundamental_section = "\n".join([
+            "## Fundamental Analysis",
+            "No fundamental analysis available - no 10-K/10-Q data found.",
+        ])
 
     current_ts = datetime.utcnow().strftime('%b %d, %Y at %I:%M %p UTC').replace(' 0', ' ').lstrip('0')
 
@@ -787,71 +831,75 @@ No fundamental analysis available - no 10-K/10-Q data found.
         ", ".join(metrics_obj.notes) if metrics_obj and metrics_obj.notes else "No unusual observations logged."
     )
 
-    md = f"""# {state.ticker} Investment Brief
-**Last refreshed:** {current_ts}
+    debate_section = ""
+    if state.debate and getattr(state.debate, "consensus_summary", None):
+        debate_section = (
+            "## Investment Final Recommendation\n"
+            f"{state.debate.consensus_summary}\n"
+        )
 
----
+    report_sections = [
+        f"# {state.ticker} Investment Brief",
+        f"**Last refreshed:** {current_ts}",
+        "",
+        "---",
+        "",
+        "## Executive Dashboard",
+        f"- **What stands out:** {valuation_trend} trend paired with {volatility_label} volatility.",
+        "- **Primary question:** Is the current narrative supportive of further upside given risk levels?",
+        f"- **Bottom line:** {bottom_line}",
+        "",
+        "---",
+        "",
+        "## Decision Lens",
+        "### 1. Market Structure",
+        f"- Period assessed: {state.period}",
+        f"- Horizon in focus: {state.horizon_days} days",
+        f"- Storyline: {valuation_tone}",
+        "",
+        "### 2. Risk Review",
+        f"- Default read: {risk_summary}",
+        f"- Notes: {notes_text}",
+        "",
+        "### 3. Fundamental Pulse",
+        f"- Filing types covered: {fundamental_obj.filing_type if fundamental_obj else 'N/A'}",
+        f"- Executive summary: {fundamental_obj.executive_summary if fundamental_obj else 'Insufficient filing coverage.'}",
+        f"- Thesis highlights: {fundamental_obj.investment_thesis if fundamental_obj else 'No official thesis compiled.'}",
+        "",
+        "---",
+        "",
+        "## Supporting Detail",
+        "### Sentiment & Narrative",
+        sentiment_section,
+        "",
+        "### Valuation Context",
+        valuation_section,
+        "",
+        "### Fundamental Highlights",
+        fundamental_section,
+        "",
+        "### Recent Headlines",
+        news_section,
+        "",
+        "---",
+        "",
+        "## Methodology Notes",
+        "- Sequenced multi-agent workflow: market data → sentiment → valuation → fundamentals → risk → writer.",
+        "- Market data via yfinance; fallback narratives when data unavailable.",
+        "- News ingestion uses Polygon (if configured) otherwise synthetic briefs; sentiment generated via LLM feedback loop.",
+        "- Fundamental insights extracted through RAG over ingested 10-K/10-Q filings.",
+        "- Risk metrics computed from returns-based analytics (volatility, drawdown, VaR).",
+    ]
 
-## Snapshot
-| Lens | Takeaway |
-| --- | --- |
-| Price action | {valuation_tone} |
-| Risk posture | {risk_summary} |
-| Sentiment pulse | {sentiment_tone} |
-| Fundamentals | {fundamental_tone} |
+    if debate_section.strip():
+        report_sections.extend([
+            "",
+            "---",
+            "",
+            debate_section.strip(),
+        ])
 
----
-
-## Executive Dashboard
-- **What stands out:** {valuation_trend} trend paired with {volatility_label} volatility.
-- **Primary question:** Is the current narrative supportive of further upside given risk levels?
-- **Bottom line:** {bottom_line}
-
----
-
-## Decision Lens
-### 1. Market Structure
-- Period assessed: {state.period}
-- Horizon in focus: {state.horizon_days} days
-- Storyline: {valuation_tone}
-
-### 2. Risk Review
-- Default read: {risk_summary}
-- Notes: {notes_text}
-
-### 3. Fundamental Pulse
-- Filing types covered: {fundamental_obj.filing_type if fundamental_obj else 'N/A'}
-- Executive summary: {fundamental_obj.executive_summary if fundamental_obj else 'Insufficient filing coverage.'}
-- Thesis highlights: {fundamental_obj.investment_thesis if fundamental_obj else 'No official thesis compiled.'}
-
----
-
-## Supporting Detail
-### Sentiment & Narrative
-{sentiment_section}
-
-### Valuation Context
-{valuation_section}
-
-### Fundamental Highlights
-{fundamental_section}
-
-### Recent Headlines
-{news_section}
-
----
-
-## Methodology Notes
-- Sequenced multi-agent workflow: market data → sentiment → valuation → fundamentals → risk → writer.
-- Market data via yfinance; fallback narratives when data unavailable.
-- News ingestion uses Polygon (if configured) otherwise synthetic briefs; sentiment generated via LLM feedback loop.
-- Fundamental insights extracted through RAG over ingested 10-K/10-Q filings.
-- Risk metrics computed from returns-based analytics (volatility, drawdown, VaR).
-
----
-
-{"## Investment Final Recommendation\n" + state.debate.consensus_summary if state.debate else ""}
-"""
+    md = "\n".join(report_sections)
     # _ = llm.invoke([SystemMessage(content=WRITER_SYSTEM), HumanMessage(content="draft report")])  # tracing
     
     # Create key findings including valuation and fundamental analysis
@@ -1024,6 +1072,15 @@ def debate_fundamental_agent(state: State):
     idx = new_state.debate.agent_turn_count[current_agent]
     print(f'{current_agent} turn-{idx}')
 
+    fundamental_summary = ""
+    if state.fundamental:
+        fundamental_summary = getattr(state.fundamental, "executive_summary", "") or ""
+    if not fundamental_summary:
+        fundamental_summary = (
+            f"No fundamental analysis available for {state.ticker} yet. "
+            "Use only your own reasoning and any prior debate context."
+        )
+
     DEBATE_SYSTEM = f"""
                         You are the Fundamental Analysis Agent.
 
@@ -1031,7 +1088,7 @@ def debate_fundamental_agent(state: State):
                         Focus on financial performance, balance sheet strength, profitability, debt, valuation, and long-term business potential.
 
                         Report:
-                        \"\"\"{state.fundamental.executive_summary}\"\"\"
+                        \"\"\"{fundamental_summary}\"\"\"
 
                         """
     

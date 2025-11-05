@@ -32,10 +32,7 @@ def _detect_model_provider():
     if not raw:
         raw = 'auto'
     openai_key = os.getenv('OPENAI_API_KEY')
-    if raw == 'auto':
-        provider = 'openai' if openai_key else 'ollama'
-    else:
-        provider = raw
+    provider = 'openai' if raw == 'auto' else raw
     return provider, openai_key
 
 
@@ -63,6 +60,8 @@ def favicon_placeholder():
 def get_available_models():
     raw_provider = (os.getenv('MODEL_PROVIDER') or 'auto').strip().lower() or 'auto'
     provider, openai_key = _detect_model_provider()
+    ollama_ok = _is_ollama_available()
+
 
     if provider == 'openai':
         if not openai_key:
@@ -75,7 +74,7 @@ def get_available_models():
         description = 'OpenAI GPT model'
         models = [current_model]
     elif provider == 'ollama':
-        if not _is_ollama_available():
+        if not ollama_ok:
             return jsonify({
                 'error': 'Ollama is not reachable. Start it with: ollama serve'
             }), 503
@@ -327,5 +326,5 @@ if __name__ == '__main__':
     app.run(
         debug=True,
         host=os.getenv('HOST', '127.0.0.1'),
-        port=int(os.getenv('PORT', '5050')),
+        port=int(os.getenv('PORT', '8000')),
     )

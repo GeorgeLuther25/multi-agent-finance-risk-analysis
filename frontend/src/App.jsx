@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import jsPDF from 'jspdf';
 import './App.css';
 
 const initialFormState = {
@@ -9,7 +8,7 @@ const initialFormState = {
     period: '1wk',
     interval: '1d',
     horizon_days: 30,
-    mode: 'chain' // change this to chain or debate mode
+    mode: 'debate'
 };
 
 function App() {
@@ -163,63 +162,18 @@ function App() {
   };
 
   const handleDownloadPdf2 = () => {
-    if (!result?.report_pdf_base64) return;
-    const link = document.createElement('a');
-    link.href = `data:application/pdf;base64,${result.report_pdf_base64}`;
-    link.download = `AnalysisReport_${result.ticker}.pdf`;
-    link.click();
-  };
-
-  const handleDownloadPdf = () => {
-    if (!result?.report?.markdown_report || downloading) {
+    if (!result?.report_pdf_base64 || downloading) {
       return;
     }
 
     setDownloading(true);
     try {
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: 'a4',
-      });
-
-      const margin = 40;
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const usableWidth = pageWidth - margin * 2;
-      const lineHeight = 16;
-      let cursorY = margin;
-
-      const title = `Finance Risk Analysis — ${result.ticker || ''}`.trim();
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text(title, margin, cursorY);
-      cursorY += lineHeight * 2;
-
-      const sections = result.report.markdown_report
-        .replace(/#+\s?/g, '')
-        .replace(/\*\*/g, '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-
-      doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(11);
-
-      sections.forEach(line => {
-        const wrapped = doc.splitTextToSize(line, usableWidth);
-        wrapped.forEach(textLine => {
-          if (cursorY + lineHeight > doc.internal.pageSize.getHeight() - margin) {
-            doc.addPage();
-            cursorY = margin;
-          }
-          doc.text(textLine, margin, cursorY);
-          cursorY += lineHeight;
-        });
-        cursorY += lineHeight * 0.5;
-      });
-
-      const filename = `${result.ticker || 'analysis'}_risk_report.pdf`;
-      doc.save(filename);
+      const link = document.createElement('a');
+      link.href = `data:application/pdf;base64,${result.report_pdf_base64}`;
+      link.download = `AnalysisReport_${result.ticker}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (err) {
       console.error('Failed to export PDF:', err);
       setPromptStatus({
@@ -281,6 +235,7 @@ function App() {
               />
             </div>
 
+
             <div className="form-group">
               <label>Time Period</label>
               <select
@@ -326,18 +281,6 @@ function App() {
                 max="365"
                 required
               />
-            </div>
-
-            <div className="form-group" style={{ display: 'none' }}>
-              <label>Agent Mode</label>
-              <select
-                name="mode"
-                value={formData.mode}
-                onChange={handleInputChange}
-              >
-                <option value="chain">Standard Pipeline</option>
-                <option value="debate">Leader Debate</option>
-              </select>
             </div>
 
             <button type="submit" disabled={loading} className="submit-btn">
@@ -446,8 +389,13 @@ function App() {
                         </h4>
                         <ul>
                           {Object.entries(agentArgs).map(([round, argument]) => (
-                            <li key={`${agentName}-${round}`} style={{ marginBottom: '8px' }}>
-                              <strong>Round {parseInt(round) + 1}:</strong> {argument}
+                            <li key={`${agentName}-${round}`} style={{ marginBottom: '12px', listStyle: 'none' }}>
+                              <strong style={{ display: 'block', marginBottom: '6px' }}>
+                                Round {parseInt(round, 10) + 1}:
+                              </strong>
+                              <div className="markdown-content">
+                                <ReactMarkdown>{argument}</ReactMarkdown>
+                              </div>
                             </li>
                           ))}
                         </ul>
