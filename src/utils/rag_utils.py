@@ -147,6 +147,8 @@ class FundamentalRAG:
             
             # Add date range filters
             if from_year is not None:
+                if from_year == datetime.now().year and from_month > datetime.now().month - 3:
+                    from_month = datetime.now().month - 3
                 # Documents that end after the start period
                 filter_conditions.append({
                     "$or": [

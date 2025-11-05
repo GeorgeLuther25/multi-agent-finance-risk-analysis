@@ -162,6 +162,14 @@ function App() {
     }
   };
 
+  const handleDownloadPdf2 = () => {
+    if (!result?.report_pdf_base64) return;
+    const link = document.createElement('a');
+    link.href = `data:application/pdf;base64,${result.report_pdf_base64}`;
+    link.download = `AnalysisReport_${result.ticker}.pdf`;
+    link.click();
+  };
+
   const handleDownloadPdf = () => {
     if (!result?.report?.markdown_report || downloading) {
       return;
@@ -228,19 +236,19 @@ function App() {
       <div className="container">
         {/* Header */}
         <div className="header">
-          <h1>🤖 Multi-Agent Finance Risk Analysis</h1>
+          <h1>Multi-Agent Finance Risk Analysis</h1>
           <p>
             {providerInfo?.provider === 'openai'
-              ? `Using OpenAI ${providerInfo.current_model}`
+              ? `Using Model: OpenAI ${providerInfo.current_model}`
               : providerInfo?.provider === 'ollama'
-              ? `Using Ollama ${providerInfo.current_model}`
+              ? `Using Model: Ollama ${providerInfo.current_model}`
               : 'Model provider unknown'}
           </p>
         </div>
 
         {/* Input Form */}
         <div className="form-container">
-          <h2>📊 Analysis Parameters</h2>
+          <h2>Analysis Parameters</h2>
 
           <div className="prompt-helper">
             <label htmlFor="prompt">Describe your request</label>
@@ -251,7 +259,7 @@ function App() {
               onChange={(e) => setPrompt(e.target.value)}
             />
             <button type="button" className="prompt-btn" onClick={parsePrompt}>
-              🎯 Apply Prompt
+              Apply Prompt
             </button>
             {promptStatus && (
               <div className={`prompt-status ${promptStatus.type}`}>
@@ -320,7 +328,7 @@ function App() {
               />
             </div>
 
-            <div className="form-group">
+            <div className="form-group" style={{ display: 'none' }}>
               <label>Agent Mode</label>
               <select
                 name="mode"
@@ -339,7 +347,7 @@ function App() {
               <button
                 type="button"
                 className="download-btn"
-                onClick={handleDownloadPdf}
+                onClick={handleDownloadPdf2}
                 disabled={downloading}
               >
                 {downloading ? 'Preparing PDF…' : '📄 Download Report PDF'}
@@ -385,37 +393,88 @@ function App() {
               </div>
             </div>
 
-            <div className="graph-card">
-              <h3>Agent Orchestration</h3>
-              <p className="graph-caption">
-                {result.analysis_mode === 'debate'
-                  ? 'Leader debates with every specialist twice before final synthesis.'
-                  : 'Linear LangGraph chain executes agents in sequence.'}
-              </p>
-              <img
-                src={`/visualizations/langgraph_${result.analysis_mode || 'chain'}.svg`}
-                alt={`LangGraph ${result.analysis_mode || 'chain'} workflow`}
-              />
-            </div>
-
-            {/* Detailed Report */}
-            <div className="report">
-              <h2>📋 Detailed Risk Analysis Report</h2>
-              <div className="markdown-content">
-                <ReactMarkdown>{result.report?.markdown_report}</ReactMarkdown>
+            <div className="summary-cards">
+              <div className="card">
+                <h3>Investment Recommendation</h3>
+                <p className="card-text-regular">
+                  {result.debate?.consensus_summary}
+                </p>
               </div>
             </div>
 
-            {result.debate_transcript && (
-              <details className="debate-log">
-                <summary>Debate Transcript</summary>
-                <ul>
-                  {result.debate_transcript.map((line, idx) => (
-                    <li key={idx}>{line}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            <details className="raw-data">
+              <summary>Agent Orchestration</summary>
+              <div className="graph-card">
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <div style={{ flex: 1}}>
+                    <h3>Collaboration Workflow</h3>
+                    <img
+                      src={`/visualizations/langgraph_collaboration.png`}
+                      alt={`Collaboration workflow`}
+                    />
+                  </div>
+
+                  <div style={{ flex: 2 }}>
+                    <h3>Debate Workflow</h3>
+                    <img
+                      src={`/visualizations/langgraph_debate.png`}
+                      alt={`Debate workflow`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            {/* Detailed Report */}
+            <details className="raw-data">
+              <summary>Detailed Risk Analysis Report</summary>
+              <div className="report">
+                <h2>Detailed Risk Analysis Report</h2>
+                <div className="markdown-content">
+                  <ReactMarkdown>{result.report?.markdown_report}</ReactMarkdown>
+                </div>
+              </div>
+
+              {result.agent_arguments && (
+                <details className="debate-log">
+                  <summary>Debate Transcript</summary>
+                  <div>
+                    {Object.entries(result.agent_arguments).filter(([agentName]) => agentName !== 'debate_manager').map(([agentName, agentArgs]) => (
+                      <div key={agentName} style={{ marginBottom: '20px' }}>
+                        <h4 style={{ color: '#2c3e50', marginBottom: '10px', textTransform: 'capitalize' }}>
+                          {agentName} Agent
+                        </h4>
+                        <ul>
+                          {Object.entries(agentArgs).map(([round, argument]) => (
+                            <li key={`${agentName}-${round}`} style={{ marginBottom: '8px' }}>
+                              <strong>Round {parseInt(round) + 1}:</strong> {argument}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                    {Object.entries(result.agent_arguments).filter(([agentName]) => agentName == 'debate_manager').map(([agentName, agentArgs]) => {
+                      const rounds = Object.entries(agentArgs);
+                      const lastRoundIndex = rounds.length - 1;
+                      return (
+                        <div key={agentName} style={{ marginBottom: '20px' }}>
+                          <h4 style={{ color: '#2c3e50', marginBottom: '10px', textTransform: 'capitalize' }}>
+                            {agentName}
+                          </h4>
+                          <ul>
+                            {Object.entries(agentArgs).map(([round, argument], index) => (
+                              <li key={`${agentName}-${round}`} style={{ marginBottom: '8px' }}>
+                                <strong>{index === lastRoundIndex ? 'Final Consensus:' : `Round ${parseInt(round) + 1}:`}</strong> {argument}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
+            </details>
 
             {/* Raw Data */}
             <details className="raw-data">
