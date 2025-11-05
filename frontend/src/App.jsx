@@ -439,7 +439,7 @@ function App() {
                 <details className="debate-log">
                   <summary>Debate Transcript</summary>
                   <div>
-                    {Object.entries(result.agent_arguments).map(([agentName, agentArgs]) => (
+                    {Object.entries(result.agent_arguments).filter(([agentName]) => agentName !== 'debate_manager').map(([agentName, agentArgs]) => (
                       <div key={agentName} style={{ marginBottom: '20px' }}>
                         <h4 style={{ color: '#2c3e50', marginBottom: '10px', textTransform: 'capitalize' }}>
                           {agentName} Agent
@@ -453,6 +453,24 @@ function App() {
                         </ul>
                       </div>
                     ))}
+                    {Object.entries(result.agent_arguments).filter(([agentName]) => agentName == 'debate_manager').map(([agentName, agentArgs]) => {
+                      const rounds = Object.entries(agentArgs);
+                      const lastRoundIndex = rounds.length - 1;
+                      return (
+                        <div key={agentName} style={{ marginBottom: '20px' }}>
+                          <h4 style={{ color: '#2c3e50', marginBottom: '10px', textTransform: 'capitalize' }}>
+                            {agentName}
+                          </h4>
+                          <ul>
+                            {Object.entries(agentArgs).map(([round, argument], index) => (
+                              <li key={`${agentName}-${round}`} style={{ marginBottom: '8px' }}>
+                                <strong>{index === lastRoundIndex ? 'Final Consensus:' : `Round ${parseInt(round) + 1}:`}</strong> {argument}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
                   </div>
                 </details>
               )}
