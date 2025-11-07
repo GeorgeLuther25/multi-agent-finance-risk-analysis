@@ -1,10 +1,7 @@
 import ast
 import json
-import numpy as np
-import pandas as pd
 import json
 import re
-from io import StringIO
 from datetime import datetime
 from typing import Optional
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -12,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
 from utils.config import get_llm
-from utils.tools import get_price_history, get_recent_news, query_10k_documents, period_to_months_range
+from utils.tools import get_price_history, get_recent_news, query_10k_documents, period_to_months_range, compute_risk, compute_valuation_metrics
 from utils.constants import RISK_SYSTEM, SENTIMENT_SYSTEM, VALUATION_SYSTEM, FUNDAMENTAL_SYSTEM
 from utils.schemas import (
     MarketData, NewsBundle, NewsItem, RiskMetrics, RiskReport,
@@ -29,37 +26,6 @@ load_dotenv()
 # os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 # os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 
-
-def _compute_risk(price_csv: str):
-    try:
-        print(f"DEBUG: price_csv type: {type(price_csv)}")
-        print(f"DEBUG: price_csv length: {len(price_csv) if price_csv else 0}")
-        print(f"DEBUG: price_csv preview: {price_csv[:200] if price_csv else 'None'}")
-        
-        if not price_csv or price_csv.strip() == "":
-            return {"error": "no_data"}
-            
-        df = pd.read_csv(StringIO(price_csv))
-        print(f"DEBUG: DataFrame shape: {df.shape}")
-        print(f"DEBUG: DataFrame columns: {df.columns.tolist()}")
-        
-        if "Close" not in df.columns or len(df) < 30:
-            return {"error": "insufficient_data"}
-            
-        df["ret"] = np.log(df["Close"]).diff()
-        rets = df["ret"].dropna().values
-        mu, sigma = rets.mean(), rets.std(ddof=1)
-        ann_vol = float(sigma * np.sqrt(252))
-        close = df["Close"].values
-        roll_max = np.maximum.accumulate(close)
-        drawdown = (close / roll_max) - 1.0
-        max_dd = float(drawdown.min())
-        var_95 = float(-(mu + sigma * 1.645))
-        sharpe_like = float(mu / sigma * np.sqrt(252)) if sigma > 0 else None
-        return {"annual_vol": ann_vol, "max_drawdown": max_dd, "daily_var_95": var_95, "sharpe_like": sharpe_like}
-    except Exception as e:
-        print(f"DEBUG: Error in _compute_risk: {e}")
-        return {"error": f"computation_error: {str(e)}"}
 
 class State(BaseModel):
     ticker: str
@@ -380,139 +346,6 @@ def fundamental_agent(state: State, config: RunnableConfig):
     return new_state
 
 
-def _compute_valuation_metrics(price_csv: str, ticker: str, period: str) -> dict:
-    """
-    Compute valuation metrics including annualized return and volatility.
-    Uses the formulas specified:
-    - R_annualized = ((1 + R_cumulative)^(252/n)) - 1
-    - σ_annualized = σ_daily × √252
-    
-    Args:
-        price_csv: csv data of stock price
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        period: Period of the observed stock price
-        
-    Returns:
-        Returns dictionary of ValuationMetrics result
-    """
-    try:
-        print(f"📊 Computing valuation metrics for {ticker}...")
-        # Parse the CSV data
-        df = pd.read_csv(StringIO(price_csv))
-        
-        # Ensure we have required columns
-        if 'Close' not in df.columns or 'Date' not in df.columns:
-            raise ValueError("CSV must contain 'Close' and 'Date' columns")
-        
-        # Sort by date to ensure proper order
-        df['Date'] = pd.to_datetime(df['Date'])
-        df = df.sort_values('Date')
-        
-        # Calculate daily returns
-        df['Daily_Return'] = df['Close'].pct_change()
-        
-        # Remove any NaN values
-        daily_returns = df['Daily_Return'].dropna()
-        
-        if len(daily_returns) < 2:
-            raise ValueError("Insufficient data for valuation analysis")
-        
-        # Number of trading days
-        n = len(daily_returns)
-        
-        # Calculate cumulative return
-        start_price = df['Close'].iloc[0]
-        end_price = df['Close'].iloc[-1]
-        cumulative_return = (end_price - start_price) / start_price
-        
-        # Calculate annualized return: R_annualized = ((1 + R_cumulative)^(252/n)) - 1
-        annualized_return = ((1 + cumulative_return) ** (252 / n)) - 1
-        
-        # Calculate daily volatility (standard deviation of daily returns)
-        daily_volatility = daily_returns.std()
-        
-        # Calculate annualized volatility: σ_annualized = σ_daily × √252
-        annualized_volatility = daily_volatility * np.sqrt(252)
-        
-        # Determine price trend
-        price_change_pct = (end_price - start_price) / start_price
-        if price_change_pct > 0.05:  # 5% threshold
-            price_trend = "upward"
-        elif price_change_pct < -0.05:
-            price_trend = "downward"
-        else:
-            price_trend = "sideways"
-        
-        # Determine volatility regime
-        if annualized_volatility < 0.15:  # 15% annual volatility
-            volatility_regime = "low"
-        elif annualized_volatility < 0.30:  # 30% annual volatility
-            volatility_regime = "medium"
-        else:
-            volatility_regime = "high"
-        
-        # Generate insights
-        insights = []
-        insights.append(f"Price moved {price_change_pct:.2%} over {n} trading days")
-        insights.append(f"Daily volatility of {daily_volatility:.4f} ({annualized_volatility:.2%} annualized)")
-        
-        if annualized_return > 0.10:
-            insights.append("Strong positive annualized returns")
-        elif annualized_return < -0.10:
-            insights.append("Negative annualized returns indicate underperformance")
-        
-        if volatility_regime == "high":
-            insights.append("High volatility suggests increased investment risk")
-        elif volatility_regime == "low":
-            insights.append("Low volatility indicates stable price movement")
-        
-        # Risk-return assessment
-        if annualized_return > 0 and volatility_regime == "low":
-            risk_assessment = "Favorable risk-return profile with positive returns and low volatility"
-        elif annualized_return > 0 and volatility_regime == "high":
-            risk_assessment = "High-risk, high-reward profile with positive returns but elevated volatility"
-        elif annualized_return < 0 and volatility_regime == "high":
-            risk_assessment = "Unfavorable profile with negative returns and high volatility"
-        else:
-            risk_assessment = "Mixed risk profile requiring careful evaluation"
-        
-        # Trend analysis
-        trend_analysis = f"The {ticker} exhibits a {price_trend} trend over the analysis period with {volatility_regime} volatility regime."
-        
-        return {
-            "ticker": ticker,
-            "analysis_period": period,
-            "trading_days": n,
-            "cumulative_return": cumulative_return,
-            "annualized_return": annualized_return,
-            "daily_volatility": daily_volatility,
-            "annualized_volatility": annualized_volatility,
-            "price_trend": price_trend,
-            "volatility_regime": volatility_regime,
-            "valuation_insights": insights,
-            "trend_analysis": trend_analysis,
-            "risk_assessment": risk_assessment
-        }
-        
-    except Exception as e:
-        print(f"Error computing valuation metrics: {e}")
-        # Return default metrics on error
-        return {
-            "ticker": ticker,
-            "analysis_period": period,
-            "trading_days": 0,
-            "cumulative_return": 0.0,
-            "annualized_return": 0.0,
-            "daily_volatility": 0.0,
-            "annualized_volatility": 0.0,
-            "price_trend": "sideways",
-            "volatility_regime": "medium",
-            "valuation_insights": ["Error in calculation - insufficient data"],
-            "trend_analysis": "Unable to determine trend due to data issues",
-            "risk_assessment": "Cannot assess risk due to insufficient data"
-        }
-
-
 def valuation_agent(state: State, config: RunnableConfig):
     """
     Valuation agent that analyzes historical price data to compute valuation metrics
@@ -540,7 +373,7 @@ def valuation_agent(state: State, config: RunnableConfig):
             risk_assessment="Unable to assess risk without market data"
         )
     else:
-        valuation_agent = create_react_agent(llm, [_compute_valuation_metrics], prompt=(VALUATION_SYSTEM))
+        valuation_agent = create_react_agent(llm, [compute_valuation_metrics], prompt=(VALUATION_SYSTEM))
         
         # Use LLM for enhanced trend analysis and interpretation
         analysis_prompt = f"""
@@ -593,12 +426,7 @@ def valuation_agent(state: State, config: RunnableConfig):
 
 
 def risk_agent(state: State, config: RunnableConfig):
-    llm = get_llm()
-    try:
-        _ = llm.invoke([SystemMessage(content=RISK_SYSTEM), HumanMessage(content="compute risk")])  # tracing
-    except Exception as e:
-        print(f"⚠️  Risk LLM call skipped: {e}")
-    stats = _compute_risk(state.market.price_csv if state.market else "")
+    stats = compute_risk.invoke({"price_csv": state.market.price_csv if state.market else ""})
     notes, flags = [], []
     if "error" in stats:
         notes.append(stats["error"])
