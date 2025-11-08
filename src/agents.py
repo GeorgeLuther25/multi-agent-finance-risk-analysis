@@ -40,6 +40,7 @@ class State(BaseModel):
     metrics: Optional[RiskMetrics] = None
     report: Optional[RiskReport] = None
     debate: Optional[DebateReport] = None
+    end_date: Optional[str] = None
 
 
 def parse_agent_response(response_content: str) -> tuple[str, dict]:
@@ -89,8 +90,11 @@ def parse_agent_response(response_content: str) -> tuple[str, dict]:
 def data_agent(state: State, config: RunnableConfig):
     # llm = get_llm()
     # _ = llm.invoke([SystemMessage(content=DATA_SYSTEM), HumanMessage(content=f"ticker={state.ticker}")])  # no-op, just for tracing
-    price_csv = get_price_history.invoke({"ticker": state.ticker, "period": state.period, "interval": state.interval})
-    news_raw = get_recent_news.invoke({"ticker": state.ticker, "period": state.period})
+    end_date = None
+    if state.end_date is not None: 
+        end_date = datetime.strptime(state.end_date, "%Y-%m-%d")
+    price_csv = get_price_history.invoke({"ticker": state.ticker, "period": state.period, "interval": state.interval, "end_date": end_date})
+    news_raw = get_recent_news.invoke({"ticker": state.ticker, "period": state.period, "end_date": end_date})
     items = []
     try:
         for r in ast.literal_eval(news_raw):
@@ -246,6 +250,13 @@ def fundamental_agent(state: State, config: RunnableConfig):
     """
     Fundamental agent that analyzes 10-K/10-Q data using RAG as a tool.
     """
+    end_year = None
+    end_month = None
+    if state.end_date is not None: 
+        end_date = datetime.strptime(state.end_date, "%Y-%m-%d")
+        end_year = end_date.year
+        end_month = end_date.month
+
     # Initialize RAG system to ensure sample data exists
     rag_system = FundamentalRAG()
     available_filings = rag_system.get_available_filings(state.ticker)
@@ -274,7 +285,7 @@ def fundamental_agent(state: State, config: RunnableConfig):
             methodology="RAG-enhanced 10-K/10-Q document analysis"
         )
     else:
-        from_year, from_month, to_year, to_month = period_to_months_range(state.period)
+        from_year, from_month, to_year, to_month = period_to_months_range(state.period, end_year, end_month)
 
         # Create agent with tools
         llm = get_llm()

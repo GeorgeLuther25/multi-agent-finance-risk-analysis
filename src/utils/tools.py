@@ -30,7 +30,7 @@ except ImportError:
     print("⚠️  newspaper3k not available. Install with: pip install newspaper3k")
 
 @tool("get_price_history")
-def get_price_history(ticker: str, period: str = "1y", interval: str = "1d", end_date: datetime = None) -> str:
+def get_price_history(ticker: str, period: str = "1y", interval: str = "1d", end_date = None) -> str:
     """Returns price history CSV for ticker using yfinance."""
     start_date, end_date = period_to_datetime_range(period, end_date)
     # Format dates for yfinance (YYYY-MM-DD)
@@ -61,7 +61,7 @@ def get_price_history(ticker: str, period: str = "1y", interval: str = "1d", end
     return df.to_csv(index=False)
 
 @tool("get_recent_news")
-def get_recent_news(ticker: str, period: str = "14d", end_date: datetime = None) -> str:
+def get_recent_news(ticker: str, period: str = "14d", end_date = None) -> str:
     # """Stub news. Replace with your provider later."""
     # cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
     # samples = [

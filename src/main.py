@@ -7,7 +7,6 @@ from typing import Optional, Tuple, Type
 from langgraph.graph import StateGraph, END
 from langchain_core.runnables import RunnableConfig
 from markdown_pdf import MarkdownPdf, Section
-pdf = MarkdownPdf(toc_level=2, optimize=True)
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -106,41 +105,22 @@ def build_graph():
     return build_chain_graph()
 
 
-if __name__ == "__main__":
-    if not os.path.exists("final_state.json"):
-        graph, state_cls = get_workflow()
-        with open("frontend/public/visualizations/langgraph_collaboration.png", "wb") as f:
-            f.write(graph.get_graph().draw_mermaid_png())
-        # state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
-        state = state_cls(ticker="GOOGL", period="1wk", interval="1d", horizon_days=30)
-        final_state = graph.invoke(state, config=RunnableConfig())
-        
-        # Handle the return value properly
-        # if isinstance(final_state, dict):
-        #     # If final_state is a dict, access it as such
-        #     if 'report' in final_state and final_state['report']:
-        #         print(final_state['report'].markdown_report)
-        #     else:
-        #         print("Final state:", final_state)
-        # else:
-        # # If final_state is a State object
-        #     if hasattr(final_state, 'report') and final_state.report:
-        #         print(final_state.report.markdown_report)
-            # else:
-        # print("Final state:", final_state)
-        # if hasattr(final_state, 'metrics'):
-        #     print("Metrics:", final_state.metrics)
-        # if hasattr(final_state, 'market'):
-        #     print("Market data available:", final_state.market is not None)
-        # if hasattr(final_state, 'sentiment'):
-        #     print("Sentiment available:", final_state.sentiment is not None)
-        print(final_state['report'].markdown_report)
+def run_all_graphs(ticker="GOOGL", period="1wk", interval="1d", horizon_days=30, end_date=None):
+    final_state_dict = {}
+    # if not os.path.exists("final_state.json"):
+    graph, state_cls = get_workflow()
+    with open("frontend/public/visualizations/langgraph_collaboration.png", "wb") as f:
+        f.write(graph.get_graph().draw_mermaid_png())
+    # state = state_cls(ticker="AAPL", period="1wk", interval="1d", horizon_days=30)
+    state = state_cls(ticker=ticker, period=period, interval=interval, horizon_days=horizon_days, end_date=end_date)
+    final_state = graph.invoke(state, config=RunnableConfig())
+    print(final_state['report'].markdown_report)
 
-        # Save to JSON file
-        final_state_dict = final_state 
-        state_obj = State(**final_state_dict)
-        with open("final_state.json", "w") as f:
-                f.write(state_obj.model_dump_json(indent=2))
+    # Save to JSON file
+    final_state_dict = final_state 
+    state_obj = State(**final_state_dict)
+    with open("final_state.json", "w") as f:
+            f.write(state_obj.model_dump_json(indent=2))
 
     with open("final_state.json", "r") as f:
         final_state = State.model_validate_json(f.read())
@@ -154,6 +134,7 @@ if __name__ == "__main__":
         final_state = debateGraph.invoke(final_state, config=RunnableConfig(recursion_limit=100), verbose=True)
         print('Debate Terminated: ',final_state['debate'].terminated)
 
+        pdf = MarkdownPdf(toc_level=2, optimize=True)
         pdf.add_section(Section(final_state['report'].markdown_report))
         pdf.save(f"AnalysisReport_{final_state['ticker']}.pdf")
 
@@ -162,6 +143,11 @@ if __name__ == "__main__":
         state_obj = State(**final_state_dict)
         with open("final_state_with_debate.json", "w") as f:
                 f.write(state_obj.model_dump_json(indent=2))
+    return state_obj
 
     # debateGraph = build_debate_graph(final_state)
     # final_state = debateGraph.invoke(final_state, config=RunnableConfig(), verbose=True)
+
+
+if __name__ == "__main__":
+    run_all_graphs()

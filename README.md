@@ -236,6 +236,22 @@ New 10K/10Q documents must be stored in data/filings directory in `ticker-filing
 
 E.g. AAPL-10Q-Q3-4-6-2025.pdf
 
+## Running Integration Test
+Integration test can be run to verify how accurate the system's recommendations are.
+
+Run the following:
+```bash
+# Runs the main program five times with different parameters, generate their outputs and perform test for each (Checks whether the actual recommendation is equal to expected result based on stock's average close price).
+source .venv/bin/activate
+bash test_program.sh
+```
+
+The five test cases are already saved in src/tests/json folder from prev. execution. To run tests using these files without rerunning the main program, run the following instead:
+```bash
+cd src/tests
+pytest integration_test.py -v -s
+```
+
 <!-- ## 📊 What You'll See
 
 ### Console Output
