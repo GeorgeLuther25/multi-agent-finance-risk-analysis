@@ -230,6 +230,7 @@ source .venv/bin/activate
 cd frontend
 npm start
 ```
+See pdf files in sample_outputs/ for sample  outputs.
 
 ## Saving 10K/10Q Documents
 New 10K/10Q documents must be stored in data/filings directory in `ticker-filing_type-filing_freq-filing_start_month-filing_end_month-filing_year.pdf` format.
