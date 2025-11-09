@@ -1,7 +1,9 @@
 
 # 🤖 Multi-Agent Finance Risk Analysis
 
-Advanced multi-agent system for comprehensive financial analysis using LangChain, RAG (Retrieval-Augmented Generation), and real-time data. Analyzes stocks through sentiment analysis, fundamental analysis using 10-K/10-Q filings, technical analysis, and risk assessment.
+Advanced multi-agent system for comprehensive financial analysis using LangChain, RAG (Retrieval-Augmented Generation), and real-time data. Executes the following:
+- multi-agent collaboration: allows each agent to perform sentiment, fundamental, valuation and risk analysis.
+- multi-agent debate: Round-robin debate rounds between agents supervised by debate manager for final concensus on financial risks and investment recommendations.
 
 <!-- ## 📁 Project Structure
 
@@ -36,7 +38,7 @@ multi-agent-finance-risk-analysis/
 └── .venv/                        # Virtual environment (auto-created)
 ``` -->
 
-## 🚀 Agent Workflow
+<!-- ## 🚀 Agent Workflow
 
 The system processes analysis through these specialized agents:
 
@@ -54,7 +56,7 @@ The system processes analysis through these specialized agents:
 - **Real-Time Data Integration**: Live news, market data, and sentiment analysis
 - **Risk Assessment**: Traditional financial risk metrics with automated flags
 - **LangSmith Integration**: Complete workflow tracing and debugging
-- **Document Ingestion**: Custom tools for ingesting financial documents
+- **Document Ingestion**: Custom tools for ingesting financial documents -->
 
 ## 🤖 Agent Overview
 
@@ -69,7 +71,7 @@ The system employs 6 specialized agents that work together:
 | **Risk Agent** | Risk assessment | VaR calculations, drawdown analysis, risk flags |
 | **Writer Agent** | Report generation | Comprehensive markdown reports, final analysis compilation |
 
-### Fundamental Agent Highlights
+<!-- ### Fundamental Agent Highlights
 
 The **Fundamental Agent** is powered by a sophisticated RAG (Retrieval-Augmented Generation) system:
 
@@ -77,7 +79,7 @@ The **Fundamental Agent** is powered by a sophisticated RAG (Retrieval-Augmented
 - 📊 **Comprehensive Analysis**: Automated extraction of financial metrics, risk factors, and business insights
 - 🛠️ **Efficient Querying**: Batched queries to minimize API calls and maximize information retrieval
 - 📈 **Health Scoring**: Automated financial health scoring (0-10 scale)
-- 🎯 **Investment Thesis**: AI-generated investment recommendations based on SEC filings
+- 🎯 **Investment Thesis**: AI-generated investment recommendations based on SEC filings -->
 
 ## 📋 Prerequisites
 
@@ -85,7 +87,7 @@ The **Fundamental Agent** is powered by a sophisticated RAG (Retrieval-Augmented
 - macOS/Linux/Windows
 - Internet connection (for stock data)
 
-## ��️ Installation
+## 🛠 Installation
 
 ### 1. Clone the Repository
 
@@ -208,7 +210,7 @@ os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 os.environ.setdefault("LANGCHAIN_PROJECT", "Multi-Agent Finance Bot")
 ``` -->
 
-## �� Running the System
+## 🛠 Running the System
 
 ```bash
 # In one terminal, start ollama service
@@ -230,7 +232,7 @@ source .venv/bin/activate
 cd frontend
 npm start
 ```
-See pdf files in sample_outputs/ for sample  outputs.
+🔸 See pdf files in `sample_outputs/` for sample  outputs.
 
 ## Saving 10K/10Q Documents
 New 10K/10Q documents must be stored in data/filings directory in `ticker-filing_type-filing_freq-filing_start_month-filing_end_month-filing_year.pdf` format.
