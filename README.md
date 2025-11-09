@@ -253,6 +253,12 @@ cd src/tests
 pytest integration_test.py -v -s
 ```
 
+## Running the Streamlit ChatGPT webapp clone
+Run the following:
+```bash
+streamlit run chatgpt_ui.py
+```
+
 <!-- ## 📊 What You'll See
 
 ### Console Output
