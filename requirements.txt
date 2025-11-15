@@ -77,8 +77,8 @@ langgraph-prebuilt==1.0.1
 langgraph-sdk==0.2.9
 langsmith==0.4.38
 lxml==6.0.2
-markdown-pdf
-markdown-it-py==4.0.0
+markdown-pdf==1.10
+markdown-it-py==3.0.0
 MarkupSafe==3.0.3
 marshmallow==3.26.1
 matplotlib==3.10.7
